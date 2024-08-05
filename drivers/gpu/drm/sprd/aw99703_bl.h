@@ -108,7 +108,7 @@ static const unsigned char aw99703_reg_access[AW99703_REG_MAX] = {
 	[AW99703_REG_SCANEN] = REG_RD_ACCESS,
 };
 
-#define MAX_BRIGHTNESS			(2047)
+#define MAX_BRIGHTNESS			(4095)
 
 /*SFTRST:0x01*/
 #define AW99703_SFTRST_MASK			(~(1<<0))
@@ -208,7 +208,7 @@ static const unsigned char aw99703_reg_access[AW99703_REG_MAX] = {
 #define AW99703_TRANCFG_PWM_TIM_MASK		(~(7<<4))
 #define AW99703_TRANCFG_I2C_TIM_MASK		(~(15<<0))
 
-#define MAX_BRIGHTNESS		(2047)
+#define MAX_BRIGHTNESS		(4095)
 #define AW_READ_CHIPID_RETRIES 5
 #define AW_READ_CHIPID_RETRY_DELAY 2
 

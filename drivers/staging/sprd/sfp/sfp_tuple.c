@@ -32,7 +32,7 @@
 #include <net/netfilter/ipv4/nf_defrag_ipv4.h>
 #include <net/netfilter/nf_log.h>
 
-#include <sfp.h>
+#include "sfp.h"
 
 static bool sfp_tcp_pkt_to_tuple(const void *data,
 				 unsigned int dataoff,
