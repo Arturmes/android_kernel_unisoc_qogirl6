@@ -1,1 +1,1 @@
-obj-y += st21nfc.o
+obj-m += st21nfc.o

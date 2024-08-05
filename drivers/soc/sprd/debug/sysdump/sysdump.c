@@ -269,6 +269,7 @@ void sprd_debug_check_crash_key(unsigned int code, int value)
 					++loopcount, vol_pressed);
 				if (time_before(jiffies, vol_pressed + 5 * HZ)) {
 					if (loopcount == 2)
+						pr_info("The Crash Key is triggered\n");
 						panic("Crash Key");
 				} else {
 					pr_info("%s: exceed 5s(%u) between power key and volup/voldn key\n",
