@@ -101,16 +101,6 @@ config CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
 	  governor. If unsure have a look at the help section of the
 	  driver. Fallback governor will be the performance governor.
 
-config CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
-	bool "schedutil"
-	depends on SMP
-	select CPU_FREQ_GOV_SCHEDUTIL
-	select CPU_FREQ_GOV_PERFORMANCE
-	help
-	  Use the 'schedutil' CPUFreq governor by default. If unsure,
-	  have a look at the help section of that governor. The fallback
-	  governor will be 'performance'.
-
 config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 	bool "interactive"
 	select CPU_FREQ_GOV_INTERACTIVE
@@ -120,6 +110,16 @@ config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 	  you to get a full dynamic cpu frequency capable system by simply
 	  loading your cpufreq low-level hardware driver, using the
 	  'interactive' governor for latency-sensitive workloads.
+
+config CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
+	bool "schedutil"
+	depends on SMP
+	select CPU_FREQ_GOV_SCHEDUTIL
+	select CPU_FREQ_GOV_PERFORMANCE
+	help
+	  Use the 'schedutil' CPUFreq governor by default. If unsure,
+	  have a look at the help section of that governor. The fallback
+	  governor will be 'performance'.
 
 endchoice
 
@@ -202,34 +202,6 @@ config CPU_FREQ_GOV_CONSERVATIVE
 
 	  If in doubt, say N.
 
-config CPU_BOOST
-	tristate "Event base short term CPU freq boost"
-	depends on CPU_FREQ
-	help
-	  This driver boosts the frequency of one or more CPUs based on
-	  various events that might occur in the system. As of now, the
-	  events it reacts to are:
-	  - Migration of important threads from one CPU to another.
-
-	  If in doubt, say N.
-
-config CPU_FREQ_GOV_SCHEDUTIL
-	bool "'schedutil' cpufreq policy governor"
-	depends on CPU_FREQ && SMP
-	select CPU_FREQ_GOV_ATTR_SET
-	select IRQ_WORK
-	help
-	  This governor makes decisions based on the utilization data provided
-	  by the scheduler.  It sets the CPU frequency to be proportional to
-	  the utilization/capacity ratio coming from the scheduler.  If the
-	  utilization is frequency-invariant, the new frequency is also
-	  proportional to the maximum available frequency.  If that is not the
-	  case, it is proportional to the current frequency of the CPU.  The
-	  frequency tipping point is at utilization/capacity equal to 80% in
-	  both cases.
-
-	  If in doubt, say N.
-
 config CPU_FREQ_GOV_INTERACTIVE
 	tristate "'interactive' cpufreq policy governor"
 	depends on CPU_FREQ
@@ -247,6 +219,31 @@ config CPU_FREQ_GOV_INTERACTIVE
 	  module will be called cpufreq_interactive.
 
 	  For details, take a look at linux/Documentation/cpu-freq.
+
+	  If in doubt, say N.
+
+config INTERACTIVE_TIMER_MODE
+	tristate "enable 'interactive' cpufreq policy governor with timer mode"
+	depends on CPU_FREQ_GOV_INTERACTIVE
+	default n
+	help
+	  enable 'interactive' cpufreq policy governor with timer mode.
+	  If in doubt, say N.
+
+config CPU_FREQ_GOV_SCHEDUTIL
+	bool "'schedutil' cpufreq policy governor"
+	depends on CPU_FREQ && SMP
+	select CPU_FREQ_GOV_ATTR_SET
+	select IRQ_WORK
+	help
+	  This governor makes decisions based on the utilization data provided
+	  by the scheduler.  It sets the CPU frequency to be proportional to
+	  the utilization/capacity ratio coming from the scheduler.  If the
+	  utilization is frequency-invariant, the new frequency is also
+	  proportional to the maximum available frequency.  If that is not the
+	  case, it is proportional to the current frequency of the CPU.  The
+	  frequency tipping point is at utilization/capacity equal to 80% in
+	  both cases.
 
 	  If in doubt, say N.
 
@@ -274,6 +271,15 @@ config CPUFREQ_DT_PLATDEV
 	  supported platforms.
 
 	  If in doubt, say N.
+
+config CPUFREQ_DUMMY
+	tristate "Dummy CPU frequency driver"
+	help
+	  This option adds a generic dummy CPUfreq driver, which sets a fake
+	  2-frequency table when initializing each policy and otherwise does
+	  nothing.
+
+	  If in doubt, say N
 
 if X86
 source "drivers/cpufreq/Kconfig.x86"
@@ -391,5 +397,10 @@ config QORIQ_CPUFREQ
 	  This adds the CPUFreq driver support for Freescale QorIQ SoCs
 	  which are capable of changing the CPU's frequency dynamically.
 
+config SPRD_CPUDVFS_GCOV
+	bool "open gcov for cpudvfs"
+	depends on GCOV_PROFILE_MODULES
+	help
+	  Say Y here to enable gcov in cpudvfs.
 endif
 endmenu

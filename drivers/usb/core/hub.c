@@ -18,6 +18,7 @@
 #include <linux/sched/mm.h>
 #include <linux/list.h>
 #include <linux/slab.h>
+#include <linux/kcov.h>
 #include <linux/ioctl.h>
 #include <linux/usb.h>
 #include <linux/usbdevice_fs.h>
@@ -52,11 +53,6 @@ static void hub_event(struct work_struct *work);
 
 /* synchronize hub-port add/remove and peering operations */
 DEFINE_MUTEX(usb_port_peer_mutex);
-
-static bool skip_extended_resume_delay = 1;
-module_param(skip_extended_resume_delay, bool, 0644);
-MODULE_PARM_DESC(skip_extended_resume_delay,
-		"removes extra delay added to finish bus resume");
 
 /* cycle leds on hubs that aren't blinking for attention */
 static bool blinkenlights;
@@ -648,12 +644,6 @@ void usb_kick_hub_wq(struct usb_device *hdev)
 		kick_hub_wq(hub);
 }
 
-void usb_flush_hub_wq(void)
-{
-	flush_workqueue(hub_wq);
-}
-EXPORT_SYMBOL(usb_flush_hub_wq);
-
 /*
  * Let the USB core know that a USB 3.0 device has sent a Function Wake Device
  * Notification, which indicates it had initiated remote wakeup.
@@ -938,7 +928,11 @@ static int hub_set_port_link_state(struct usb_hub *hub, int port1,
  */
 static void hub_port_logical_disconnect(struct usb_hub *hub, int port1)
 {
+#ifdef CONFIG_USB_DEBUG_DETAILED_LOG
+	dev_info(&hub->ports[port1 - 1]->dev, "logical disconnect\n");
+#else
 	dev_dbg(&hub->ports[port1 - 1]->dev, "logical disconnect\n");
+#endif
 	hub_port_disable(hub, port1, 1);
 
 	/* FIXME let caller ask to power down the port:
@@ -2247,6 +2241,70 @@ static void announce_device(struct usb_device *udev)
 static inline void announce_device(struct usb_device *udev) { }
 #endif
 
+#if IS_ENABLED(CONFIG_SPRD_USBM)
+#include <linux/usb/sprd_usbm.h>
+static int sprd_switch_usb_audio(struct usb_device *udev)
+{
+	struct usb_interface_descriptor *intf_desc;
+	struct usb_config_descriptor	*config_desc;
+	const char		*driver_name;
+	int i = 0;
+	int cnt = 0;
+	bool audio_flag = false;
+	bool ret = false;
+	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
+
+	intf_desc = &udev->config->intf_cache[0]->altsetting[0].desc;
+	config_desc = &udev->config->desc;
+
+	if (udev->bus->controller->driver)
+		driver_name = udev->bus->controller->driver->name;
+	else
+		driver_name = udev->bus->sysdev->driver->name;
+
+	/* There may be couple of intf_cache due to config, loopup all
+	 * of the intf for usb audio
+	 */
+	for (i = 0; i < config_desc->bNumInterfaces; i++) {
+		intf_desc = &udev->config->intf_cache[i]->altsetting[0].desc;
+		/* FIXME: There is a issue that fail to alternate usb ctrl from
+		 * dwc3 to musb for a microphone usb device, modify to support
+		 * offload only for usb headset device.
+		 * check to match USB_SUBCLASS_AUDIOSTREAMING(0x2)
+		 */
+		if (intf_desc->bInterfaceClass == USB_CLASS_AUDIO &&
+			intf_desc->bInterfaceSubClass == 0x2)
+			cnt++;
+		if (cnt > 1) {
+			audio_flag = true;
+			break;
+		}
+	}
+
+
+	dev_dbg(&udev->dev,
+		"config_desc: bNumInterfaces=%d, intf_desc: bInterfaceNumber=%d bInterfaceClass=%d "
+		"bInterfaceSubClass=%d bInterfaceProtocol=%d, cnt=%d\n",
+		config_desc->bNumInterfaces,
+		intf_desc->bInterfaceNumber,
+		intf_desc->bInterfaceClass,
+		intf_desc->bInterfaceSubClass,
+		intf_desc->bInterfaceProtocol,
+		cnt);
+
+	/* If the usb device is an audio device, and current usb controller is
+	 * not "musb-hdrc", need to switch to musb
+	 */
+	if (audio_flag && !strncmp(driver_name, "xhci-hcd", 8)) {
+		dev_info(&udev->dev, "Do usb3 -> usb2 switch for usb audio, [%s]\n",
+			dev_name(hcd->usb_phy->dev));
+		call_sprd_usbm_event_notifiers(SPRD_USBM_EVENT_HOST_DWC3, false, NULL);
+		ret = true;
+	}
+
+	return ret;
+}
+#endif
 
 /**
  * usb_enumerate_device_otg - FIXME (usbcore-internal)
@@ -2483,6 +2541,17 @@ int usb_new_device(struct usb_device *udev)
 	dev_dbg(&udev->dev, "udev %d, busnum %d, minor = %d\n",
 			udev->devnum, udev->bus->busnum,
 			(((udev->bus->busnum-1) * 128) + (udev->devnum-1)));
+
+#if IS_ENABLED(CONFIG_SPRD_USBM)
+	/* if we want to switch the usb controlloer, we set the err to -ENOTCONN to make
+	 * sure it will not re-try the enumerate, just break and do switching
+	 */
+	if (sprd_switch_usb_audio(udev)) {
+		err = -ENOTCONN;
+		goto fail;
+	}
+#endif
+
 	/* export the usbdev device-node for libusb */
 	udev->dev.devt = MKDEV(USB_DEVICE_MAJOR,
 			(((udev->bus->busnum-1) * 128) + (udev->devnum-1)));
@@ -3500,10 +3569,7 @@ int usb_port_resume(struct usb_device *udev, pm_message_t msg)
 		/* drive resume for USB_RESUME_TIMEOUT msec */
 		dev_dbg(&udev->dev, "usb %sresume\n",
 				(PMSG_IS_AUTO(msg) ? "auto-" : ""));
-		if (!skip_extended_resume_delay ||
-				udev->parent != udev->bus->root_hub)
-			usleep_range(USB_RESUME_TIMEOUT * 1000,
-					(USB_RESUME_TIMEOUT + 1) * 1000);
+		msleep(USB_RESUME_TIMEOUT);
 
 		/* Virtual root hubs can trigger on GET_PORT_STATUS to
 		 * stop resume signaling.  Then finish the resume
@@ -3512,7 +3578,7 @@ int usb_port_resume(struct usb_device *udev, pm_message_t msg)
 		status = hub_port_status(hub, port1, &portstatus, &portchange);
 
 		/* TRSMRCY = 10 msec */
-		usleep_range(10000, 10500);
+		msleep(10);
 	}
 
  SuspendCleared:
@@ -4425,8 +4491,6 @@ hub_port_init(struct usb_hub *hub, struct usb_device *udev, int port1,
 	const char		*speed;
 	int			devnum = udev->devnum;
 	const char		*driver_name;
-	char			*error_event[] = {
-				"USB_DEVICE_ERROR=Device_No_Response", NULL };
 
 	/* root hub ports have a slightly longer reset period
 	 * (from USB 2.0 spec, section 7.1.7.5)
@@ -4614,8 +4678,6 @@ hub_port_init(struct usb_hub *hub, struct usb_device *udev, int port1,
 				if (r != -ENODEV)
 					dev_err(&udev->dev, "device descriptor read/64, error %d\n",
 							r);
-				kobject_uevent_env(&udev->parent->dev.kobj,
-						KOBJ_CHANGE, error_event);
 				retval = -EMSGSIZE;
 				continue;
 			}
@@ -4668,8 +4730,6 @@ hub_port_init(struct usb_hub *hub, struct usb_device *udev, int port1,
 				dev_err(&udev->dev,
 					"device descriptor read/8, error %d\n",
 					retval);
-			kobject_uevent_env(&udev->parent->dev.kobj,
-						KOBJ_CHANGE, error_event);
 			if (retval >= 0)
 				retval = -EMSGSIZE;
 		} else {
@@ -4836,6 +4896,11 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
 	struct usb_port *port_dev = hub->ports[port1 - 1];
 	struct usb_device *udev = port_dev->child;
 	static int unreliable_port = -1;
+#ifdef CONFIG_USB_DEBUG_DETAILED_LOG
+	dev_info(&port_dev->dev,
+		"port %d, status %04x, change %04x, %s\n",
+		port1, portstatus, portchange, portspeed(hub, portstatus));
+#endif
 
 	/* Disconnect any existing devices under this port */
 	if (udev) {
@@ -5229,6 +5294,8 @@ static void hub_event(struct work_struct *work)
 	hub_dev = hub->intfdev;
 	intf = to_usb_interface(hub_dev);
 
+	kcov_remote_start_usb((u64)hdev->bus->busnum);
+
 	dev_dbg(hub_dev, "state %d ports %d chg %04x evt %04x\n",
 			hdev->state, hdev->maxchild,
 			/* NOTE: expects max 15 ports... */
@@ -5335,6 +5402,8 @@ out_hdev_lock:
 	/* Balance the stuff in kick_hub_wq() and allow autosuspend */
 	usb_autopm_put_interface(intf);
 	kref_put(&hub->kref, hub_release);
+
+	kcov_remote_stop();
 }
 
 static const struct usb_device_id hub_id_table[] = {

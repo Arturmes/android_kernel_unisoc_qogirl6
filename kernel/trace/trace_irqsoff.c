@@ -13,8 +13,8 @@
 #include <linux/uaccess.h>
 #include <linux/module.h>
 #include <linux/ftrace.h>
-#include <linux/sched/clock.h>
-#include <linux/sched/sysctl.h>
+
+#include <../../drivers/soc/sprd/debug/irq/eirqsoff/trace_eirqsoff.h>
 
 #include "trace.h"
 
@@ -444,11 +444,15 @@ void start_critical_timings(void)
 {
 	if (preempt_trace() || irq_trace())
 		start_critical_timing(CALLER_ADDR0, CALLER_ADDR1);
+	continue_eirqsoff_timing();
+	continue_epreempt_timing();
 }
 EXPORT_SYMBOL_GPL(start_critical_timings);
 
 void stop_critical_timings(void)
 {
+	pause_eirqsoff_timing();
+	pause_epreempt_timing();
 	if (preempt_trace() || irq_trace())
 		stop_critical_timing(CALLER_ADDR0, CALLER_ADDR1);
 }
@@ -458,6 +462,7 @@ EXPORT_SYMBOL_GPL(stop_critical_timings);
 #ifdef CONFIG_PROVE_LOCKING
 void time_hardirqs_on(unsigned long a0, unsigned long a1)
 {
+	stop_eirqsoff_timing(a0, a1);
 	if (!preempt_trace() && irq_trace())
 		stop_critical_timing(a0, a1);
 }
@@ -466,63 +471,33 @@ void time_hardirqs_off(unsigned long a0, unsigned long a1)
 {
 	if (!preempt_trace() && irq_trace())
 		start_critical_timing(a0, a1);
+	start_eirqsoff_timing(a0, a1);
 }
 
 #else /* !CONFIG_PROVE_LOCKING */
-
-#ifdef CONFIG_PREEMPTIRQ_EVENTS
-/*
- * irqsoff stack tracing threshold in ns.
- * default: 1ms
- */
-unsigned int sysctl_irqsoff_tracing_threshold_ns = 1000000UL;
-
-struct irqsoff_store {
-	u64 ts;
-	unsigned long caddr[4];
-};
-
-DEFINE_PER_CPU(struct irqsoff_store, the_irqsoff);
-#endif /* CONFIG_PREEMPTIRQ_EVENTS */
 
 /*
  * We are only interested in hardirq on/off events:
  */
 static inline void tracer_hardirqs_on(void)
 {
-#ifdef CONFIG_PREEMPTIRQ_EVENTS
-	struct irqsoff_store *is = &per_cpu(the_irqsoff,
-						raw_smp_processor_id());
-	u64 delta = sched_clock() - is->ts;
-
-	if (delta > sysctl_irqsoff_tracing_threshold_ns)
-		trace_irqs_disable(delta, is->caddr[0], is->caddr[1],
-						is->caddr[2], is->caddr[3]);
-#endif /* CONFIG_PREEMPTIRQ_EVENTS */
-
+	stop_irqsoff_panic_timing();
+	stop_eirqsoff_timing(CALLER_ADDR0, CALLER_ADDR1);
 	if (!preempt_trace() && irq_trace())
 		stop_critical_timing(CALLER_ADDR0, CALLER_ADDR1);
 }
 
 static inline void tracer_hardirqs_off(void)
 {
-#ifdef CONFIG_PREEMPTIRQ_EVENTS
-	struct irqsoff_store *is = &per_cpu(the_irqsoff,
-						raw_smp_processor_id());
-
-	is->ts = sched_clock();
-	is->caddr[0] = CALLER_ADDR0;
-	is->caddr[1] = CALLER_ADDR1;
-	is->caddr[2] = CALLER_ADDR2;
-	is->caddr[3] = CALLER_ADDR3;
-#endif /* CONFIG_PREEMPTIRQ_EVENTS */
-
 	if (!preempt_trace() && irq_trace())
 		start_critical_timing(CALLER_ADDR0, CALLER_ADDR1);
+	start_eirqsoff_timing(CALLER_ADDR0, CALLER_ADDR1);
+	start_irqsoff_panic_timing();
 }
 
 static inline void tracer_hardirqs_on_caller(unsigned long caller_addr)
 {
+	stop_eirqsoff_timing(CALLER_ADDR0, caller_addr);
 	if (!preempt_trace() && irq_trace())
 		stop_critical_timing(CALLER_ADDR0, caller_addr);
 }
@@ -531,6 +506,7 @@ static inline void tracer_hardirqs_off_caller(unsigned long caller_addr)
 {
 	if (!preempt_trace() && irq_trace())
 		start_critical_timing(CALLER_ADDR0, caller_addr);
+	start_eirqsoff_timing(CALLER_ADDR0, caller_addr);
 }
 
 #endif /* CONFIG_PROVE_LOCKING */
@@ -539,6 +515,7 @@ static inline void tracer_hardirqs_off_caller(unsigned long caller_addr)
 #ifdef CONFIG_PREEMPT_TRACER
 static inline void tracer_preempt_on(unsigned long a0, unsigned long a1)
 {
+	stop_epreempt_timing(a0, a1);
 	if (preempt_trace() && !irq_trace())
 		stop_critical_timing(a0, a1);
 }
@@ -547,6 +524,7 @@ static inline void tracer_preempt_off(unsigned long a0, unsigned long a1)
 {
 	if (preempt_trace() && !irq_trace())
 		start_critical_timing(a0, a1);
+	start_epreempt_timing(a0, a1);
 }
 #endif /* CONFIG_PREEMPT_TRACER */
 

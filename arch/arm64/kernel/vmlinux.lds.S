@@ -76,12 +76,6 @@ jiffies = jiffies_64;
 #define TRAMP_TEXT
 #endif
 
-#define RTIC_BSS					\
-	. = ALIGN(PAGE_SIZE);				\
-	VMLINUX_SYMBOL(__bss_rtic_start) = .;	\
-	KEEP(*(.bss.rtic))			\
-	. = ALIGN(PAGE_SIZE);				\
-	VMLINUX_SYMBOL(__bss_rtic_end) = .;
 /*
  * The size of the PE/COFF section that covers the kernel image, which
  * runs from stext to _edata, must be a round multiple of the PE/COFF
@@ -168,6 +162,9 @@ SECTIONS
 		KEEP(*(.altinstructions))
 		__alt_instructions_end = .;
 	}
+	.altinstr_replacement : {
+		*(.altinstr_replacement)
+	}
 
 	. = ALIGN(PAGE_SIZE);
 	__inittext_end = .;
@@ -181,6 +178,7 @@ SECTIONS
 		SECURITY_INITCALL
 		INIT_RAM_FS
 		*(.init.rodata.* .init.bss)	/* from the EFI stub */
+		KUNIT_TEST_MODULES
 	}
 	.exit.data : {
 		ARM_EXIT_KEEP(EXIT_DATA)
@@ -194,6 +192,15 @@ SECTIONS
 
 	__rela_offset	= ABSOLUTE(ADDR(.rela.dyn) - KIMAGE_VADDR);
 	__rela_size	= SIZEOF(.rela.dyn);
+
+#ifdef CONFIG_RELR
+	.relr.dyn : ALIGN(8) {
+		*(.relr.dyn)
+	}
+
+	__relr_offset	= ABSOLUTE(ADDR(.relr.dyn) - KIMAGE_VADDR);
+	__relr_size	= SIZEOF(.relr.dyn);
+#endif
 
 	. = ALIGN(SEGMENT_ALIGN);
 	__initdata_end = .;
@@ -249,10 +256,6 @@ SECTIONS
 	STABS_DEBUG
 
 	HEAD_SYMBOLS
-
-	.bss : {			/* bss segment		*/
-         RTIC_BSS
-	}
 }
 
 /*

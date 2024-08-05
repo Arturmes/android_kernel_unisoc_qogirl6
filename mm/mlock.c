@@ -25,6 +25,7 @@
 #include <linux/mm_inline.h>
 
 #include "internal.h"
+#include <linux/protect_lru.h>
 
 bool can_do_mlock(void)
 {
@@ -108,6 +109,8 @@ static bool __munlock_isolate_lru_page(struct page *page, bool getpage)
 		lruvec = mem_cgroup_page_lruvec(page, page_pgdat(page));
 		if (getpage)
 			get_page(page);
+
+		del_page_from_protect_lru_list(page, lruvec);
 		ClearPageLRU(page);
 		del_page_from_lru_list(page, lruvec, page_lru(page));
 		return true;
@@ -564,6 +567,7 @@ success:
 	 * It's okay if try_to_unmap_one unmaps a page just after we
 	 * set VM_LOCKED, populate_vma_page_range will bring it back.
 	 */
+
 	if (lock) {
 		vm_write_begin(vma);
 		WRITE_ONCE(vma->vm_flags, newflags);
@@ -670,6 +674,8 @@ static __must_check int do_mlock(unsigned long start, size_t len, vm_flags_t fla
 	unsigned long lock_limit;
 	int error = -ENOMEM;
 
+	start = untagged_addr(start);
+
 	if (!can_do_mlock())
 		return -EPERM;
 
@@ -732,6 +738,8 @@ SYSCALL_DEFINE3(mlock2, unsigned long, start, size_t, len, int, flags)
 SYSCALL_DEFINE2(munlock, unsigned long, start, size_t, len)
 {
 	int ret;
+
+	start = untagged_addr(start);
 
 	len = PAGE_ALIGN(len + (offset_in_page(start)));
 	start &= PAGE_MASK;

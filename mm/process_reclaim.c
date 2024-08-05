@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -25,6 +25,9 @@
 #include <trace/events/process_reclaim.h>
 
 #define MAX_SWAP_TASKS SWAP_CLUSTER_MAX
+
+#define DEF_SWAP_HIGH_RATIO	85
+#define DEF_SWAP_LOW_RATION	65
 
 static void swap_fn(struct work_struct *work);
 DECLARE_WORK(swap_work, swap_fn);
@@ -64,9 +67,32 @@ module_param_named(swap_eff_win, swap_eff_win, int, 0644);
 static int swap_opt_eff = 50;
 module_param_named(swap_opt_eff, swap_opt_eff, int, 0644);
 
+static unsigned long queue_work_time;
+module_param_named(queue_work_time, queue_work_time, ulong, 0444);
+
+static unsigned long swap_total_scan;
+static unsigned long swap_total_reclaim;
+module_param_named(swap_total_scan, swap_total_scan, ulong, 0444);
+module_param_named(swap_total_reclaim, swap_total_reclaim, ulong, 0444);
+
+/*
+ * Vmpressure process reclaim mustn't drain all swap area. So when
+ * SwapUsed ratio is less than swap_low_ratio, we reclaim per_swap_size
+ * each time. But when SwapUsed ratio is between swap_low_ratio and
+ * swap_high_ratio, we reclaim per_swap_size *
+ * (swap_high_ratio - SwapUsed ratio)/(swap_high_ratio - swap_low_ratio)
+ * each time.
+ */
+static int swap_high_ratio = DEF_SWAP_HIGH_RATIO;
+module_param_named(swap_high_ratio, swap_high_ratio, int, 0644);
+
+static int swap_low_ratio = DEF_SWAP_LOW_RATION;
+module_param_named(swap_low_ratio, swap_low_ratio, int, 0644);
+
 static atomic_t skip_reclaim = ATOMIC_INIT(0);
 /* Not atomic since only a single instance of swap_fn run at a time */
 static int monitor_eff;
+static bool debug;
 
 struct selected_task {
 	struct task_struct *p;
@@ -119,6 +145,31 @@ static void swap_fn(struct work_struct *work)
 	int total_reclaimed = 0;
 	int nr_to_reclaim;
 	int efficiency;
+	struct sysinfo info;
+	unsigned long swap_used_ratio;
+	unsigned long now_per_swap_size = per_swap_size;
+
+	queue_work_time++;
+
+	si_swapinfo(&info);
+	if (info.totalswap) {
+		swap_used_ratio =
+			100 * (info.totalswap - info.freeswap) / info.totalswap;
+		if (swap_used_ratio > swap_high_ratio) {
+			if (debug)
+				pr_info("PR, swap free is low, skip reclaim\n");
+			return;
+		} else if (swap_used_ratio <= swap_low_ratio)
+			now_per_swap_size = per_swap_size;
+		else {
+			now_per_swap_size = per_swap_size *
+				(swap_high_ratio - swap_used_ratio);
+			now_per_swap_size /= swap_high_ratio - swap_low_ratio;
+		}
+	}
+
+	if (now_per_swap_size < SWAP_CLUSTER_MAX)
+		return;
 
 	rcu_read_lock();
 	for_each_process(tsk) {
@@ -180,7 +231,7 @@ static void swap_fn(struct work_struct *work)
 
 	while (si--) {
 		nr_to_reclaim =
-			(selected[si].tasksize * per_swap_size) / total_sz;
+			(selected[si].tasksize * now_per_swap_size) / total_sz;
 		/* scan atleast a page */
 		if (!nr_to_reclaim)
 			nr_to_reclaim = 1;
@@ -189,18 +240,27 @@ static void swap_fn(struct work_struct *work)
 
 		trace_process_reclaim(selected[si].tasksize,
 				selected[si].oom_score_adj, rp.nr_scanned,
-				rp.nr_reclaimed, per_swap_size, total_sz,
+				rp.nr_reclaimed, now_per_swap_size, total_sz,
 				nr_to_reclaim);
 		total_scan += rp.nr_scanned;
 		total_reclaimed += rp.nr_reclaimed;
+		swap_total_scan += rp.nr_scanned;
+		swap_total_reclaim += rp.nr_reclaimed;
 		put_task_struct(selected[si].p);
 	}
 
 	if (total_scan) {
 		efficiency = (total_reclaimed * 100) / total_scan;
 
+		if (debug) {
+			pr_info("ppr: scan %d reclaim %d efficiency %d\n",
+				total_scan, total_reclaimed, efficiency);
+		}
+
 		if (efficiency < swap_opt_eff) {
 			if (++monitor_eff == swap_eff_win) {
+				pr_info("PR low efficiency,skip %d reclaim\n",
+					swap_eff_win);
 				atomic_set(&skip_reclaim, swap_eff_win);
 				monitor_eff = 0;
 			}
@@ -225,12 +285,20 @@ static int vmpressure_notifier(struct notifier_block *nb,
 	if (!current_is_kswapd())
 		return 0;
 
-	if (atomic_dec_if_positive(&skip_reclaim) >= 0)
+	if (atomic_dec_if_positive(&skip_reclaim) >= 0) {
+		pr_info("process reclaim skip reclaim left %d\n",
+			atomic_read(&skip_reclaim));
 		return 0;
+	}
 
 	if ((pressure >= pressure_min) && (pressure < pressure_max))
-		if (!work_pending(&swap_work))
+		if (!work_pending(&swap_work)) {
+			if (debug) {
+				pr_info("ppr: queue work at vmpressure %lu\n",
+					pressure);
+			}
 			queue_work(system_unbound_wq, &swap_work);
+		}
 	return 0;
 }
 

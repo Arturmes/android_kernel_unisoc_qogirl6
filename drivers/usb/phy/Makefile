@@ -2,6 +2,8 @@
 #
 # Makefile for physical layer USB drivers
 #
+GCOV_PROFILE := $(CONFIG_SPRD_USB_GCOV)
+
 obj-$(CONFIG_USB_PHY)			+= phy.o
 obj-$(CONFIG_OF)			+= of.o
 obj-$(CONFIG_USB_OTG_WAKELOCK)		+= otg-wakelock.o
@@ -22,15 +24,21 @@ obj-$(CONFIG_USB_EHCI_TEGRA)		+= phy-tegra-usb.o
 obj-$(CONFIG_USB_GPIO_VBUS)		+= phy-gpio-vbus-usb.o
 obj-$(CONFIG_USB_ISP1301)		+= phy-isp1301.o
 obj-$(CONFIG_USB_MSM_OTG)		+= phy-msm-usb.o
-obj-$(CONFIG_USB_MSM_SSPHY)             += phy-msm-ssusb.o
 obj-$(CONFIG_USB_QCOM_8X16_PHY)	+= phy-qcom-8x16-usb.o
-obj-$(CONFIG_USB_QCOM_EMU_PHY)		+= phy-qcom-emu.o
 obj-$(CONFIG_USB_MV_OTG)		+= phy-mv-usb.o
 obj-$(CONFIG_USB_MXS_PHY)		+= phy-mxs-usb.o
 obj-$(CONFIG_USB_ULPI)			+= phy-ulpi.o
 obj-$(CONFIG_USB_ULPI_VIEWPORT)		+= phy-ulpi-viewport.o
 obj-$(CONFIG_KEYSTONE_USB_PHY)		+= phy-keystone.o
-obj-$(CONFIG_USB_MSM_SSPHY_QMP)     	+= phy-msm-ssusb-qmp.o
-obj-$(CONFIG_MSM_QUSB_PHY)		+= phy-msm-qusb.o phy-msm-qusb-v2.o
-obj-$(CONFIG_MSM_HSUSB_PHY)		+= phy-msm-snps-hs.o
-obj-$(CONFIG_MSM_SNPS_FEMTO_PHY)	+= phy-qcom-snps-28nm-hs.o
+obj-$(CONFIG_SPRD_REDRIVER_PTN38003A)	+= ptn38003a-i2c.o
+obj-$(CONFIG_SPRD_SHARKL3_USB2_PHY)     += phy-sprd-sharkl3.o
+obj-$(CONFIG_SPRD_PIKE2_USB2_PHY)       += phy-sprd-pike2.o
+obj-$(CONFIG_SPRD_ROC1_USB2_PHY)        += phy-sprd-roc1.o
+obj-$(CONFIG_SPRD_SHARKLE_USB2_PHY)	+= phy-sprd-sharkle.o
+obj-$(CONFIG_SPRD_SHARKL5_USB2_PHY)	+= phy-sprd-sharkl5.o
+obj-$(CONFIG_SPRD_QOGIRL6_USB2_PHY)	+= phy-sprd-qogirl6.o
+obj-$(CONFIG_SPRD_QOGIRN6PRO_USB2_PHY)	+= phy-sprd-qogirn6pro.o
+obj-$(CONFIG_SPRD_USB3_PHY)		+= phy-sprd-usb3.o
+obj-$(CONFIG_SPRD_ORCA1_USB3_PHY)		+= phy-sprd-orca.o
+obj-$(CONFIG_SPRD_ORCA1_USB3_PHY)		+= phy0-sprd-orca.o
+obj-$(CONFIG_SPRD_QOGIRN6PRO_USB31_PHY)		+= phy-sprd-usb31-qogirn6pro.o

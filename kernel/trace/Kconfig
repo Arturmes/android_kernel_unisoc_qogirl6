@@ -85,35 +85,6 @@ config RING_BUFFER_ALLOW_SWAP
 	 Allow the use of ring_buffer_swap_cpu.
 	 Adds a very slight overhead to tracing when enabled.
 
-config IPC_LOGGING
-	bool "Debug Logging for IPC Drivers"
-	select GENERIC_TRACER
-	help
-	  IPC Logging driver provides a logging option for IPC Drivers.
-	  This provides a cyclic buffer based logging support in a driver
-	  specific context. This driver also provides a debugfs interface
-	  to dump the logs in a live fashion.
-
-	  If in doubt, say no.
-
-config QCOM_RTB
-	bool "Register tracing"
-	help
-	  Enable the kernel to trace every kernel function. This is done
-	  Add support for logging different events to a small uncached
-	  region. This is designed to aid in debugging reset cases where the
-	  caches may not be flushed before the target resets.
-
-config QCOM_RTB_SEPARATE_CPUS
-	bool "Separate entries for each cpu"
-	depends on QCOM_RTB
-	depends on SMP
-	help
-	  Under some circumstances, it may be beneficial to give dedicated space
-	  for each cpu to log accesses. Selecting this option will log each cpu
-	  separately. This will guarantee that the last acesses for each cpu
-	  will be logged but there will be fewer entries per cpu
-
 # All tracer options should select GENERIC_TRACER. For those options that are
 # enabled by all tracers (context switch and event tracer) they select TRACING.
 # This allows those options to appear when no other tracer is selected. But the
@@ -123,7 +94,6 @@ config QCOM_RTB_SEPARATE_CPUS
 
 config TRACING
 	bool
-	select DEBUG_FS
 	select RING_BUFFER
 	select STACKTRACE if STACKTRACE_SUPPORT
 	select TRACEPOINTS
@@ -191,7 +161,6 @@ config FUNCTION_GRAPH_TRACER
 	  the return value. This is done by setting the current return
 	  address on the current task structure into a stack of calls.
 
-
 config PREEMPTIRQ_EVENTS
 	bool "Enable trace events for preempt and irq disable/enable"
 	select TRACE_IRQFLAGS
@@ -252,6 +221,17 @@ config PREEMPT_TRACER
 	  enabled. This option and the irqs-off timing option can be
 	  used together or separately.)
 
+config IRQSOFF_TRACER_BYTEDANCY
+	tristate "Interrupts-off Latency Tracer By Bytedancy"
+	default m
+	help
+	  This option measures the time spent in irqs-off critical
+	  sections with less overhead than IRQSOFF_TRACER configuration
+	  by ByteDancy.
+
+	  More info. can get from github:
+	  https://github.com/bytedance/trace-irqoff
+
 config SCHED_TRACER
 	bool "Scheduling Latency Tracer"
 	select GENERIC_TRACER
@@ -261,6 +241,26 @@ config SCHED_TRACER
 	help
 	  This tracer tracks the latency of the highest priority task
 	  to be scheduled in, starting from the point it has woken up.
+
+config NOSCHEDULE_TRACER_BYTEDANCY
+	tristate "Noschedule Latency Tracer By Bytedancy"
+	default m
+	help
+	  This option measures the time of task running too long in kernel
+	  sapce to schedule latency by ByteDancy.
+
+	  Get more info. from:
+	  github: https://github.com/bytedance/trace-noschedule
+
+config RUNQLAT_TRACER_BYTEDANCY
+	tristate "Run Queue Latency Tracer By Bytedance"
+	default m
+	help
+	  This tracer tracks the latency of target task in runqueue, from
+	  enqueue to running due to exe time of prior running tasks.
+
+	  Get more info. from:
+	  https://github.com/bytedance/trace-runqlat.
 
 config HWLAT_TRACER
 	bool "Tracer to detect hardware latencies (like SMIs)"
@@ -744,6 +744,19 @@ config TRACING_EVENTS_GPIO
 	default y
 	help
 	  Enable tracing events for gpio subsystem
+
+config SPRD_FTRACE_GCOV
+	bool "open gcov for ftrace"
+	depends on GCOV_PROFILE_MODULES
+	help
+	  Say Y here to enable gcov for ftrace
+
+config SPRD_KTP
+	bool "Register ktp"
+	default n
+	help
+	  The KTP(kernel trace point) is used to log discrete events in system
+	  in a buffer that can be post processed from sysdumps.
 
 endif # FTRACE
 

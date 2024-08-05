@@ -261,12 +261,19 @@ static void bbr_set_pacing_rate(struct sock *sk, u32 bw, int gain)
 		sk->sk_pacing_rate = rate;
 }
 
-/* Return count of segments we want in the skbs we send, or 0 for default. */
 static u32 bbr_tso_segs_goal(struct sock *sk)
 {
-	struct bbr *bbr = inet_csk_ca(sk);
+	struct tcp_sock *tp = tcp_sk(sk);
+	u32 segs, bytes;
 
-	return bbr->tso_segs_goal;
+	/* Sort of tcp_tso_autosize() but ignoring
+	 * driver provided sk_gso_max_size.
+	 */
+	bytes = min_t(u32, sk->sk_pacing_rate >> sk->sk_pacing_shift,
+		      GSO_MAX_SIZE - 1 - MAX_TCP_HEADER);
+	segs = max_t(u32, bytes / tp->mss_cache, bbr_min_tso_segs(sk));
+
+	return min(segs, 0x7FU);
 }
 
 static void bbr_set_tso_segs_goal(struct sock *sk)
@@ -769,7 +776,7 @@ static void bbr_update_min_rtt(struct sock *sk, const struct rate_sample *rs)
 	filter_expired = after(tcp_jiffies32,
 			       bbr->min_rtt_stamp + bbr_min_rtt_win_sec * HZ);
 	if (rs->rtt_us >= 0 &&
-	    (rs->rtt_us < bbr->min_rtt_us || filter_expired)) {
+	    (rs->rtt_us <= bbr->min_rtt_us || filter_expired)) {
 		bbr->min_rtt_us = rs->rtt_us;
 		bbr->min_rtt_stamp = tcp_jiffies32;
 	}

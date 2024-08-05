@@ -34,14 +34,6 @@ DECLARE_EVENT_CLASS(spf,
 		  __entry->address)
 );
 
-DEFINE_EVENT(spf, spf_pte_lock,
-
-	TP_PROTO(unsigned long caller,
-		 struct vm_area_struct *vma, unsigned long address),
-
-	TP_ARGS(caller, vma, address)
-);
-
 DEFINE_EVENT(spf, spf_vma_changed,
 
 	TP_PROTO(unsigned long caller,

@@ -94,6 +94,7 @@ static bool match_index(struct hid_usage *usage,
 typedef bool (*hid_usage_cmp_t)(struct hid_usage *usage,
 				unsigned int cur_idx, unsigned int val);
 
+extern bool lcd_is_on;
 static struct hid_usage *hidinput_find_key(struct hid_device *hid,
 					   hid_usage_cmp_t match,
 					   unsigned int value,
@@ -330,9 +331,6 @@ static const struct hid_device_id hid_battery_quirks[] = {
 	  HID_BATTERY_QUIRK_IGNORE },
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_ASUSTEK,
 		USB_DEVICE_ID_ASUSTEK_T100CHI_KEYBOARD),
-	  HID_BATTERY_QUIRK_IGNORE },
-	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_LOGITECH,
-		USB_DEVICE_ID_LOGITECH_DINOVO_EDGE_KBD),
 	  HID_BATTERY_QUIRK_IGNORE },
 	{}
 };
@@ -799,7 +797,7 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 		case 0x3b: /* Battery Strength */
 			hidinput_setup_battery(device, HID_INPUT_REPORT, field);
 			usage->type = EV_PWR;
-			return;
+			goto ignore;
 
 		case 0x3c: /* Invert */
 			map_key_clear(BTN_TOOL_RUBBER);
@@ -1046,7 +1044,7 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 		case HID_DC_BATTERYSTRENGTH:
 			hidinput_setup_battery(device, HID_INPUT_REPORT, field);
 			usage->type = EV_PWR;
-			return;
+			goto ignore;
 		}
 		goto unknown;
 
@@ -1438,6 +1436,11 @@ static void hidinput_led_worker(struct work_struct *work)
 	if (!buf)
 		return;
 
+	if(!lcd_is_on){
+        printk(KERN_DEBUG "lcd is off, don't report LED event\n");
+		kfree(buf);
+		return;
+	}
 	hid_output_report(report, buf);
 	/* synchronous output report */
 	ret = hid_hw_output_report(hid, buf, len);

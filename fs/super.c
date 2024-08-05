@@ -32,11 +32,14 @@
 #include <linux/backing-dev.h>
 #include <linux/rculist_bl.h>
 #include <linux/cleancache.h>
+#include <linux/fscrypt.h>
 #include <linux/fsnotify.h>
 #include <linux/lockdep.h>
 #include <linux/user_namespace.h>
 #include "internal.h"
 
+/* @fs.sec -- 89e449513e5bea6196d9aaf62a6936ae -- */
+void (*ufs_debug_func)(void *) = NULL;
 
 static LIST_HEAD(super_blocks);
 static DEFINE_SPINLOCK(sb_lock);
@@ -280,6 +283,7 @@ static void __put_super(struct super_block *sb)
 {
 	if (!--sb->s_count) {
 		list_del_init(&sb->s_list);
+		fscrypt_sb_free(sb);
 		destroy_super(sb);
 	}
 }
@@ -1295,25 +1299,20 @@ out:
 	return ERR_PTR(error);
 }
 
-/*
- * Setup private BDI for given superblock. It gets automatically cleaned up
- * in generic_shutdown_super().
- */
-int super_setup_bdi_name(struct super_block *sb, char *fmt, ...)
+static int __super_setup_bdi_name(struct super_block *sb,
+				  struct backing_dev_info *(*bdi_alloc_func)(gfp_t),
+				  char *fmt, va_list args)
 {
 	struct backing_dev_info *bdi;
 	int err;
-	va_list args;
 
-	bdi = bdi_alloc(GFP_KERNEL);
+	bdi = bdi_alloc_func(GFP_KERNEL);
 	if (!bdi)
 		return -ENOMEM;
 
 	bdi->name = sb->s_type->name;
 
-	va_start(args, fmt);
 	err = bdi_register_va(bdi, fmt, args);
-	va_end(args);
 	if (err) {
 		bdi_put(bdi);
 		return err;
@@ -1323,7 +1322,40 @@ int super_setup_bdi_name(struct super_block *sb, char *fmt, ...)
 
 	return 0;
 }
+
+/*
+ * Setup private BDI for given superblock. It gets automatically cleaned up
+ * in generic_shutdown_super().
+ */
+int super_setup_bdi_name(struct super_block *sb, char *fmt, ...)
+{
+	va_list args;
+	int ret;
+
+	va_start(args, fmt);
+	ret =  __super_setup_bdi_name(sb, bdi_alloc, fmt, args);
+	va_end(args);
+
+	return ret;
+}
 EXPORT_SYMBOL(super_setup_bdi_name);
+
+/*
+ * Setup private SEC_BDI for given superblock. It gets automatically cleaned up
+ * in generic_shutdown_super().
+ */
+int sec_super_setup_bdi_name(struct super_block *sb, char *fmt, ...)
+{
+	va_list args;
+	int ret;
+
+	va_start(args, fmt);
+	ret =  __super_setup_bdi_name(sb, sec_bdi_alloc, fmt, args);
+	va_end(args);
+
+	return ret;
+}
+EXPORT_SYMBOL(sec_super_setup_bdi_name);
 
 /*
  * Setup private BDI for given superblock. I gets automatically cleaned up
@@ -1354,11 +1386,36 @@ EXPORT_SYMBOL(__sb_end_write);
  */
 int __sb_start_write(struct super_block *sb, int level, bool wait)
 {
-	if (!wait)
-		return percpu_down_read_trylock(sb->s_writers.rw_sem + level-1);
+	bool force_trylock = false;
+	int ret = 1;
 
-	percpu_down_read(sb->s_writers.rw_sem + level-1);
-	return 1;
+#ifdef CONFIG_LOCKDEP
+	/*
+	 * We want lockdep to tell us about possible deadlocks with freezing
+	 * but it's it bit tricky to properly instrument it. Getting a freeze
+	 * protection works as getting a read lock but there are subtle
+	 * problems. XFS for example gets freeze protection on internal level
+	 * twice in some cases, which is OK only because we already hold a
+	 * freeze protection also on higher level. Due to these cases we have
+	 * to use wait == F (trylock mode) which must not fail.
+	 */
+	if (wait) {
+		int i;
+
+		for (i = 0; i < level - 1; i++)
+			if (percpu_rwsem_is_held(sb->s_writers.rw_sem + i)) {
+				force_trylock = true;
+				break;
+			}
+	}
+#endif
+	if (wait && !force_trylock)
+		percpu_down_read(sb->s_writers.rw_sem + level-1);
+	else
+		ret = percpu_down_read_trylock(sb->s_writers.rw_sem + level-1);
+
+	WARN_ON(force_trylock && !ret);
+	return ret;
 }
 EXPORT_SYMBOL(__sb_start_write);
 

@@ -128,10 +128,6 @@ struct n_tty_data {
 
 #define MASK(x) ((x) & (N_TTY_BUF_SIZE - 1))
 
-#if defined(CONFIG_TTY_FLUSH_LOCAL_ECHO)
-static void continue_process_echoes(struct work_struct *work);
-#endif
-
 static inline size_t read_cnt(struct n_tty_data *ldata)
 {
 	return ldata->read_head - ldata->read_tail;
@@ -768,17 +764,7 @@ static size_t __process_echoes(struct tty_struct *tty)
 			tail++;
 	}
 
-#if defined(CONFIG_TTY_FLUSH_LOCAL_ECHO)
-	if (ldata->echo_commit != tail) {
-		if (!tty->delayed_work) {
-			INIT_DELAYED_WORK(&tty->echo_delayed_work, continue_process_echoes);
-			schedule_delayed_work(&tty->echo_delayed_work, 1);
-		}
-		tty->delayed_work = 1;
-	}
-#endif
-
-not_yet_stored:
+ not_yet_stored:
 	ldata->echo_tail = tail;
 	return old_space - space;
 }
@@ -843,20 +829,6 @@ static void flush_echoes(struct tty_struct *tty)
 	__process_echoes(tty);
 	mutex_unlock(&ldata->output_lock);
 }
-
-#if defined(CONFIG_TTY_FLUSH_LOCAL_ECHO)
-static void continue_process_echoes(struct work_struct *work)
-{
-	struct tty_struct *tty =
-		container_of(work, struct tty_struct, echo_delayed_work.work);
-	struct n_tty_data *ldata = tty->disc_data;
-
-	mutex_lock(&ldata->output_lock);
-	tty->delayed_work = 0;
-	__process_echoes(tty);
-	mutex_unlock(&ldata->output_lock);
-}
-#endif
 
 /**
  *	add_echo_byte	-	add a byte to the echo buffer
@@ -2277,7 +2249,9 @@ static ssize_t n_tty_read(struct tty_struct *tty, struct file *file,
 			}
 
 			uncopied = copy_from_read_buf(tty, &b, &nr);
+			//pr_emerg("copy_from_read_buf1, n= %d\n", uncopied);
 			uncopied += copy_from_read_buf(tty, &b, &nr);
+			//pr_emerg("copy_from_read_buf2, n= %d\n", uncopied);
 			if (uncopied) {
 				retval = -EFAULT;
 				break;

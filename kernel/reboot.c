@@ -43,6 +43,9 @@ int reboot_default = 1;
 int reboot_cpu;
 enum reboot_type reboot_type = BOOT_ACPI;
 int reboot_force;
+/* @fs.sec -- d1fbf05204832e38d0dd3c9d4c98160a -- */
+// To prevent kernel panic by EIO during shutdown
+int ignore_fs_panic;
 
 /*
  * If set, this is used for preparing the system to power off.
@@ -70,6 +73,7 @@ void kernel_restart_prepare(char *cmd)
 	blocking_notifier_call_chain(&reboot_notifier_list, SYS_RESTART, cmd);
 	system_state = SYSTEM_RESTART;
 	usermodehelper_disable();
+	ignore_fs_panic = 1;
 	device_shutdown();
 }
 
@@ -231,6 +235,7 @@ static void kernel_shutdown_prepare(enum system_states state)
 		(state == SYSTEM_HALT) ? SYS_HALT : SYS_POWER_OFF, NULL);
 	system_state = state;
 	usermodehelper_disable();
+	ignore_fs_panic = 1;
 	device_shutdown();
 }
 /**
@@ -386,8 +391,8 @@ void ctrl_alt_del(void)
 		kill_cad_pid(SIGINT, 1);
 }
 
-char poweroff_cmd[POWEROFF_CMD_PATH_LEN] = "/sbin/poweroff";
-static const char reboot_cmd[] = "/sbin/reboot";
+char poweroff_cmd[POWEROFF_CMD_PATH_LEN] = "/system/bin/reboot -p";
+static const char reboot_cmd[] = "/system/bin/reboot";
 
 static int run_cmd(const char *cmd)
 {
@@ -512,22 +517,22 @@ static int __init reboot_setup(char *str)
 			break;
 
 		case 's':
-			if (isdigit(*(str+1)))
-				reboot_cpu = simple_strtoul(str+1, NULL, 0);
-			else if (str[1] == 'm' && str[2] == 'p' &&
-							isdigit(*(str+3)))
-				reboot_cpu = simple_strtoul(str+3, NULL, 0);
-			else
-				reboot_mode = REBOOT_SOFT;
-			if (reboot_cpu >= num_possible_cpus()) {
-				pr_err("Ignoring the CPU number in reboot= option. "
-				       "CPU %d exceeds possible cpu number %d\n",
-				       reboot_cpu, num_possible_cpus());
-				reboot_cpu = 0;
-				break;
-			}
-			break;
+		{
+			int rc;
 
+			if (isdigit(*(str+1))) {
+				rc = kstrtoint(str+1, 0, &reboot_cpu);
+				if (rc)
+					return rc;
+			} else if (str[1] == 'm' && str[2] == 'p' &&
+				   isdigit(*(str+3))) {
+				rc = kstrtoint(str+3, 0, &reboot_cpu);
+				if (rc)
+					return rc;
+			} else
+				reboot_mode = REBOOT_SOFT;
+			break;
+		}
 		case 'g':
 			reboot_mode = REBOOT_GPIO;
 			break;

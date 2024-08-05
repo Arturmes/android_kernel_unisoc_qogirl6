@@ -133,9 +133,6 @@ static void __uart_start(struct tty_struct *tty)
 	struct uart_state *state = tty->driver_data;
 	struct uart_port *port = state->uart_port;
 
-	if (port && port->ops->wake_peer)
-		port->ops->wake_peer(port);
-
 	if (port && !uart_tx_stopped(port))
 		port->ops->start_tx(port);
 }
@@ -1437,10 +1434,6 @@ static void uart_set_ldisc(struct tty_struct *tty)
 {
 	struct uart_state *state = tty->driver_data;
 	struct uart_port *uport;
-	struct tty_port *port = &state->port;
-
-	if (!tty_port_initialized(port))
-		return;
 
 	mutex_lock(&state->port.mutex);
 	uport = uart_port_check(state);
@@ -1514,6 +1507,7 @@ out:
 static void uart_close(struct tty_struct *tty, struct file *filp)
 {
 	struct uart_state *state = tty->driver_data;
+	struct uart_port *uport;
 	struct tty_port *port;
 
 	if (!state) {
@@ -1530,6 +1524,12 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 	port = &state->port;
 	pr_debug("uart_close(%d) called\n", tty->index);
 
+	mutex_lock(&state->port.mutex);
+	uport = uart_port_check(state);
+	if (uport && uart_console(uport))
+		uport->cons->cflag = tty->termios.c_cflag;
+
+	mutex_unlock(&state->port.mutex);
 	tty_port_close(tty->port, tty, filp);
 }
 

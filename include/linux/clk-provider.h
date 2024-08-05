@@ -13,7 +13,6 @@
 
 #include <linux/io.h>
 #include <linux/of.h>
-#include <linux/mutex.h>
 
 #ifdef CONFIG_COMMON_CLK
 
@@ -36,14 +35,6 @@
 #define CLK_IS_CRITICAL		BIT(11) /* do not gate, ever */
 /* parents need enable during gate/ungate, set rate and re-parent */
 #define CLK_OPS_PARENT_ENABLE	BIT(12)
-/* duty cycle call may be forwarded to the parent clock */
-#define CLK_DUTY_CYCLE_PARENT	BIT(13)
-#define CLK_ENABLE_HAND_OFF	BIT(14) /* enable clock when registered. */
-					/*
-					 * hand-off enable_count & prepare_count
-					 * to first consumer that enables clk
-					 */
-#define CLK_IS_MEASURE          BIT(15) /* measure clock */
 
 struct clk;
 struct clk_hw;
@@ -70,17 +61,6 @@ struct clk_rate_request {
 	unsigned long max_rate;
 	unsigned long best_parent_rate;
 	struct clk_hw *best_parent_hw;
-};
-
-/**
- * struct clk_duty - Struture encoding the duty cycle ratio of a clock
- *
- * @num:	Numerator of the duty cycle ratio
- * @den:	Denominator of the duty cycle ratio
- */
-struct clk_duty {
-	unsigned int num;
-	unsigned int den;
 };
 
 /**
@@ -186,15 +166,6 @@ struct clk_duty {
  *		by the second argument. Valid values for degrees are
  *		0-359. Return 0 on success, otherwise -EERROR.
  *
- * @get_duty_cycle: Queries the hardware to get the current duty cycle ratio
- *              of a clock. Returned values denominator cannot be 0 and must be
- *              superior or equal to the numerator.
- *
- * @set_duty_cycle: Apply the duty cycle ratio to this clock signal specified by
- *              the numerator (2nd argurment) and denominator (3rd  argument).
- *              Argument must be a valid ratio (denominator > 0
- *              and >= numerator) Return 0 on success, otherwise -EERROR.
- *
  * @init:	Perform platform-specific initialization magic.
  *		This is not not used by any of the basic clock types.
  *		Please consider other ways of solving initialization problems
@@ -206,18 +177,6 @@ struct clk_duty {
  *		directory is provided as an argument.  Called with
  *		prepare_lock held.  Returns 0 on success, -EERROR otherwise.
  *
- * @set_flags: Set custom flags which deal with hardware specifics. Returns 0
- *	       on success, -EERROR otherwise.
- *
- * @list_registers: Queries the hardware to get the current register contents.
- *		    This callback is optional.
- *
- * @list_rate:  On success, return the nth supported frequency for a given
- *		clock that is below rate_max. Return -ENXIO in case there is
- *		no frequency table.
- *
- * @bus_vote:	Votes for bandwidth on certain config slaves to connect
- *		ports in order to gain access to clock controllers.
  *
  * The clk_enable/clk_disable and clk_prepare/clk_unprepare pairs allow
  * implementations to split any work between atomic (enable) and sleepable
@@ -256,18 +215,8 @@ struct clk_ops {
 					   unsigned long parent_accuracy);
 	int		(*get_phase)(struct clk_hw *hw);
 	int		(*set_phase)(struct clk_hw *hw, int degrees);
-	int		(*get_duty_cycle)(struct clk_hw *hw,
-					  struct clk_duty *duty);
-	int		(*set_duty_cycle)(struct clk_hw *hw,
-					  struct clk_duty *duty);
 	void		(*init)(struct clk_hw *hw);
 	int		(*debug_init)(struct clk_hw *hw, struct dentry *dentry);
-	int		(*set_flags)(struct clk_hw *hw, unsigned int flags);
-	void		(*list_registers)(struct seq_file *f,
-							struct clk_hw *hw);
-	long		(*list_rate)(struct clk_hw *hw, unsigned int n,
-							unsigned long rate_max);
-	void		(*bus_vote)(struct clk_hw *hw, bool enable);
 };
 
 /**
@@ -279,84 +228,14 @@ struct clk_ops {
  * @parent_names: array of string names for all possible parents
  * @num_parents: number of possible parents
  * @flags: framework-level hints and quirks
- * @vdd_class: voltage scaling requirement class
- * @rate_max: maximum clock rate in Hz supported at each voltage level
- * @num_rate_max: number of maximum voltage level supported
- * @bus_cl_id: client id registered with the bus driver used for bw votes
  */
 struct clk_init_data {
 	const char		*name;
 	const struct clk_ops	*ops;
 	const char		* const *parent_names;
-	unsigned int		num_parents;
+	u8			num_parents;
 	unsigned long		flags;
-	struct clk_vdd_class	*vdd_class;
-	unsigned long		*rate_max;
-	int			num_rate_max;
-	unsigned int		bus_cl_id;
 };
-
-struct regulator;
-
-/**
- * struct clk_vdd_class - Voltage scaling class
- * @class_name: name of the class
- * @regulator: array of regulators
- * @num_regulators: size of regulator array. Standard regulator APIs will be
-			used if this field > 0
- * @set_vdd: function to call when applying a new voltage setting
- * @vdd_uv: sorted 2D array of legal voltage settings. Indexed by level, then
-		regulator
- * @level_votes: array of votes for each level
- * @num_levels: specifies the size of level_votes array
- * @skip_handoff: do not vote for the max possible voltage during init
- * @use_max_uV: use INT_MAX for max_uV when calling regulator_set_voltage
- * @cur_level: the currently set voltage level
- * @lock: lock to protect this struct
- */
-struct clk_vdd_class {
-	const char *class_name;
-	struct regulator **regulator;
-	int num_regulators;
-	int (*set_vdd)(struct clk_vdd_class *v_class, int level);
-	int *vdd_uv;
-	int *level_votes;
-	int num_levels;
-	bool skip_handoff;
-	bool use_max_uV;
-	unsigned long cur_level;
-	struct mutex lock;
-};
-
-#define DEFINE_VDD_CLASS(_name, _set_vdd, _num_levels) \
-	struct clk_vdd_class _name = { \
-		.class_name = #_name, \
-		.set_vdd = _set_vdd, \
-		.level_votes = (int [_num_levels]) {}, \
-		.num_levels = _num_levels, \
-		.cur_level = _num_levels, \
-		.lock = __MUTEX_INITIALIZER(_name.lock) \
-	}
-
-#define DEFINE_VDD_REGULATORS(_name, _num_levels, _num_regulators, _vdd_uv) \
-	struct clk_vdd_class _name = { \
-		.class_name = #_name, \
-		.vdd_uv = _vdd_uv, \
-		.regulator = (struct regulator * [_num_regulators]) {}, \
-		.num_regulators = _num_regulators, \
-		.level_votes = (int [_num_levels]) {}, \
-		.num_levels = _num_levels, \
-		.cur_level = _num_levels, \
-		.lock = __MUTEX_INITIALIZER(_name.lock) \
-	}
-
-#define DEFINE_VDD_REGS_INIT(_name, _num_regulators) \
-	struct clk_vdd_class _name = { \
-		.class_name = #_name, \
-		.regulator = (struct regulator * [_num_regulators]) {}, \
-		.num_regulators = _num_regulators, \
-		.lock = __MUTEX_INITIALIZER(_name.lock) \
-	}
 
 /**
  * struct clk_hw - handle for traversing from a struct clk to its corresponding
@@ -527,7 +406,6 @@ struct clk_divider {
 #define CLK_DIVIDER_ROUND_CLOSEST	BIT(4)
 #define CLK_DIVIDER_READ_ONLY		BIT(5)
 #define CLK_DIVIDER_MAX_AT_ZERO		BIT(6)
-#define CLK_DIVIDER_ROUND_KHZ	BIT(7)
 
 extern const struct clk_ops clk_divider_ops;
 extern const struct clk_ops clk_divider_ro_ops;
@@ -884,11 +762,6 @@ void clk_hw_reparent(struct clk_hw *hw, struct clk_hw *new_parent);
 void clk_hw_set_rate_range(struct clk_hw *hw, unsigned long min_rate,
 			   unsigned long max_rate);
 
-unsigned long clk_aggregate_rate(struct clk_hw *hw,
-					const struct clk_core *parent);
-int clk_vote_rate_vdd(struct clk_core *core, unsigned long rate);
-void clk_unvote_rate_vdd(struct clk_core *core, unsigned long rate);
-
 static inline void __clk_hw_set_clk(struct clk_hw *dst, struct clk_hw *src)
 {
 	dst->clk = src->clk;
@@ -938,6 +811,44 @@ extern struct of_device_id __clk_of_table;
 		fn(np);							\
 	}								\
 	OF_DECLARE_1(clk, name, compat, name##_of_clk_init_driver)
+
+#define CLK_HW_INIT(_name, _parent, _ops, _flags)		\
+	(&(struct clk_init_data) {				\
+		.flags		= _flags,			\
+		.name		= _name,			\
+		.parent_names	= (const char *[]) { _parent },	\
+		.num_parents	= 1,				\
+		.ops		= _ops,				\
+	})
+
+#define CLK_HW_INIT_PARENTS(_name, _parents, _ops, _flags)	\
+	(&(struct clk_init_data) {				\
+		.flags		= _flags,			\
+		.name		= _name,			\
+		.parent_names	= _parents,			\
+		.num_parents	= ARRAY_SIZE(_parents),		\
+		.ops		= _ops,				\
+	})
+
+#define CLK_HW_INIT_NO_PARENT(_name, _ops, _flags)	\
+	(&(struct clk_init_data) {			\
+		.flags          = _flags,		\
+		.name           = _name,		\
+		.parent_names   = NULL,			\
+		.num_parents    = 0,			\
+		.ops            = _ops,			\
+	})
+
+#define CLK_FIXED_FACTOR(_struct, _name, _parent,			\
+			_div, _mult, _flags)				\
+	struct clk_fixed_factor _struct = {				\
+		.div		= _div,					\
+		.mult		= _mult,				\
+		.hw.init	= CLK_HW_INIT(_name,			\
+					      _parent,			\
+					      &clk_fixed_factor_ops,	\
+					      _flags),			\
+	}
 
 #ifdef CONFIG_OF
 int of_clk_add_provider(struct device_node *np,

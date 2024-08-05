@@ -1638,11 +1638,12 @@ static int page_mapcount_is_zero(struct page *page)
  * page, used in the pageout path.  Caller must hold the page lock.
  * If @vma is not NULL, this function try to remove @page from only @vma
  * without peeking all mapped vma for @page.
+ * Return values are:
  *
  * If unmap is successful, return true. Otherwise, false.
  */
 bool try_to_unmap(struct page *page, enum ttu_flags flags,
-				struct vm_area_struct *vma)
+			struct vm_area_struct *vma)
 {
 	struct rmap_walk_control rwc = {
 		.rmap_one = try_to_unmap_one,
@@ -1814,7 +1815,6 @@ static void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
 	struct address_space *mapping = page_mapping(page);
 	pgoff_t pgoff_start, pgoff_end;
 	struct vm_area_struct *vma;
-	unsigned long address;
 
 	/*
 	 * The page lock not only makes sure that page->mapping cannot
@@ -1833,7 +1833,8 @@ static void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
 		i_mmap_lock_read(mapping);
 
 	if (rwc->target_vma) {
-		address = vma_address(page, rwc->target_vma);
+		unsigned long address = vma_address(page, rwc->target_vma);
+
 		rwc->rmap_one(page, rwc->target_vma, address, rwc->arg);
 		goto done;
 	}

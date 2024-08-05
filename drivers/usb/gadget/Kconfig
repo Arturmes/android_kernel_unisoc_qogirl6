@@ -96,8 +96,8 @@ config USB_GADGET_DEBUG_FS
 	   to conserve kernel memory, say "N".
 
 config USB_GADGET_VBUS_DRAW
-	int "Maximum VBUS Power usage (2-900 mA)"
-	range 2 900
+	int "Maximum VBUS Power usage (2-500 mA)"
+	range 2 500
 	default 2
 	help
 	   Some devices need to draw power from USB when they are
@@ -106,9 +106,7 @@ config USB_GADGET_VBUS_DRAW
 	   such as an AC adapter or batteries.
 
 	   Enter the maximum power your device draws through USB, in
-	   milliAmperes.  The permitted range of values depends on the
-	   connected speed: for SuperSpeed and up it is 2 - 900 mA, but
-	   connections at High Speed or slower will be capped at 500 mA;
+	   milliAmperes.  The permitted range of values is 2 - 500 mA;
 	   0 mA would be legal, but can make some hosts misbehave.
 
 	   This value will be used except for system-specific gadget
@@ -184,9 +182,6 @@ config USB_F_EEM
 config USB_F_SUBSET
 	tristate
 
-config USB_RNDIS
-	tristate
-
 config USB_F_RNDIS
 	tristate
 
@@ -221,7 +216,7 @@ config USB_F_TCM
 	tristate
 
 config USB_F_MTP
-	tristate
+        tristate
 
 config USB_F_PTP
         tristate
@@ -232,20 +227,11 @@ config USB_F_AUDIO_SRC
 config USB_F_ACC
 	tristate
 
-config USB_F_DIAG
+config USB_F_VSERIAL
 	tristate
 
-config USB_F_CDEV
-	tristate
-
-config USB_F_CCID
-	tristate
-
-config USB_F_GSI
-	tristate
-
-config USB_F_QDSS
-	tristate
+config USB_F_MBIM
+        tristate
 
 # this first set of drivers all depend on bulk-capable hardware.
 
@@ -260,6 +246,11 @@ config USB_CONFIGFS
 	  Associating functions with configurations is done by creating
 	  appropriate symbolic links.
 	  For more information see Documentation/usb/gadget_configfs.txt.
+
+config USB_F_VSERIAL_BYPASS_USER
+	bool "vser write bypass user"
+	help
+	  The function allow vser write in kernel.
 
 config USB_CONFIGFS_SERIAL
 	bool "Generic serial bulk in/out"
@@ -328,7 +319,6 @@ config USB_CONFIGFS_RNDIS
 	depends on USB_CONFIGFS
 	depends on NET
 	select USB_U_ETHER
-	select USB_RNDIS
 	select USB_F_RNDIS
 	help
 	   Microsoft Windows XP bundles the "Remote NDIS" (RNDIS) protocol,
@@ -402,14 +392,14 @@ config USB_CONFIGFS_F_FS
 	  mass storage) and other are implemented in user space.
 
 config USB_CONFIGFS_F_MTP
-	boolean "MTP gadget"
+	bool "MTP gadget"
 	depends on USB_CONFIGFS
 	select USB_F_MTP
 	help
 	  USB gadget MTP support
 
 config USB_CONFIGFS_F_PTP
-	boolean "PTP gadget"
+	bool "PTP gadget"
 	depends on USB_CONFIGFS && USB_CONFIGFS_F_MTP
 	select USB_F_PTP
 	help
@@ -418,6 +408,7 @@ config USB_CONFIGFS_F_PTP
 config USB_CONFIGFS_F_ACC
 	boolean "Accessory gadget"
 	depends on USB_CONFIGFS
+	depends on HID=y
 	select USB_F_ACC
 	help
 	  USB gadget Accessory support
@@ -553,86 +544,20 @@ config USB_CONFIGFS_F_TCM
 	  Both protocols can work on USB2.0 and USB3.0.
 	  UAS utilizes the USB 3.0 feature called streams support.
 
-config USB_CONFIGFS_F_DIAG
-	bool "USB Diag function"
-	select USB_F_DIAG
+config USB_CONFIGFS_F_VSERIAL
+	bool "Vendor Serial"
 	depends on USB_CONFIGFS
+	select USB_F_VSERIAL
 	help
-	  Diag function driver enables support for Qualcomm diagnostics
-	  port over USB.
+	  USB gadget vendor serial support
 
-config USB_CONFIGFS_F_CDEV
-	bool "USB Serial Character function"
-	select USB_F_CDEV
+config USB_CONFIGFS_F_MBIM
+	bool "USB MBIM function"
 	depends on USB_CONFIGFS
+	select USB_F_MBIM
 	help
-	  The serial character function is a generic function driver that
-	  exposes a pair of bulk IN and OUT endpoints which are backed by
-	  a character device and mapped to its read/write routines. The
-	  function also supports a single interrupt IN endpoint for
-	  asynchronous notification to the host. This driver is typically
-	  used to support DUN/NMEA functions.
-
-config USB_CONFIGFS_F_CCID
-	bool "USB CCID function"
-	select USB_F_CCID
-	depends on USB_CONFIGFS
-	help
-	  The Chip Card Interface Device (CCID) function implements a USB
-	  interface that exposes a standard CSCID class that consists of a
-	  pair of bulk IN and OUT endpoints and a single interrupt IN
-	  endpoint. This driver provides a character device interface
-	  allowing a userspace component to be able to provide the
-	  implementation necessary to interface with the smartcard.
-
-config USB_CONFIGFS_F_GSI
-	bool "USB GSI function"
-	select USB_F_GSI
-	select USB_RNDIS
-	depends on USB_CONFIGFS
-	help
-	  The GSI function supports the IPA Generic Software Interface found
-	  on various Qualcomm SoCs. This provides a hardware accelerated
-	  datapath for various tethered data functions, such as RmNet, RNDIS,
-	  MBIM, and CDC ECM. The function is configurable when instantiating
-	  through ConfigFS. This driver can be used instead of the standard
-	  implementations in case your hardware supports this.
-
-config USB_CONFIGFS_F_QDSS
-	bool "USB QDSS function"
-	select USB_F_QDSS
-	depends on USB_CONFIGFS
-	help
-	  USB QDSS function driver to get hwtracing related data over USB.
-
-choice
-	tristate "USB Gadget precomposed configurations"
-	default USB_ETH
-	optional
-	help
-	  A Linux "Gadget Driver" talks to the USB Peripheral Controller
-	  driver through the abstract "gadget" API.  Some other operating
-	  systems call these "client" drivers, of which "class drivers"
-	  are a subset (implementing a USB device class specification).
-	  A gadget driver implements one or more USB functions using
-	  the peripheral hardware.
-
-	  Gadget drivers are hardware-neutral, or "platform independent",
-	  except that they sometimes must understand quirks or limitations
-	  of the particular controllers they work with.  For example, when
-	  a controller doesn't support alternate configurations or provide
-	  enough of the right types of endpoints, the gadget driver might
-	  not be able work with that controller, or might need to implement
-	  a less common variant of a device class protocol.
-
-	  The available choices each represent a single precomposed USB
-	  gadget configuration. In the device model, each option contains
-	  both the device instantiation as a child for a USB gadget
-	  controller, and the relevant drivers for each function declared
-	  by the device.
+	  USB gadget mbim function support
 
 source "drivers/usb/gadget/legacy/Kconfig"
-
-endchoice
 
 endif # USB_GADGET

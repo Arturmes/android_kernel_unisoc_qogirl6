@@ -26,9 +26,6 @@
 
 #include "drm_crtc_internal.h"
 
-#define MAX_BLOB_PROP_SIZE	(PAGE_SIZE * 30)
-#define MAX_BLOB_PROP_COUNT	250
-
 /**
  * DOC: overview
  *
@@ -543,8 +540,7 @@ drm_property_create_blob(struct drm_device *dev, size_t length,
 	struct drm_property_blob *blob;
 	int ret;
 
-	if (!length || length > MAX_BLOB_PROP_SIZE -
-				sizeof(struct drm_property_blob))
+	if (!length || length > INT_MAX - sizeof(struct drm_property_blob))
 		return ERR_PTR(-EINVAL);
 
 	blob = kvzalloc(sizeof(struct drm_property_blob)+length, GFP_KERNEL);
@@ -554,6 +550,7 @@ drm_property_create_blob(struct drm_device *dev, size_t length,
 	/* This must be explicitly initialised, so we can safely call list_del
 	 * on it in the removal handler, even if it isn't in a file list. */
 	INIT_LIST_HEAD(&blob->head_file);
+	blob->data = (void *)blob + sizeof(*blob);
 	blob->length = length;
 	blob->dev = dev;
 
@@ -769,17 +766,10 @@ int drm_mode_createblob_ioctl(struct drm_device *dev,
 			      void *data, struct drm_file *file_priv)
 {
 	struct drm_mode_create_blob *out_resp = data;
-	struct drm_property_blob *blob, *bt;
+	struct drm_property_blob *blob;
 	int ret = 0;
-	u32 count = 0;
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
-		return -EINVAL;
-
-	list_for_each_entry(bt, &file_priv->blobs, head_file)
-		count++;
-
-	if (count >= MAX_BLOB_PROP_COUNT)
 		return -EINVAL;
 
 	blob = drm_property_create_blob(dev, out_resp->length, NULL);

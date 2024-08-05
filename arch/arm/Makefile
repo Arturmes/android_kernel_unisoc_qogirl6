@@ -31,9 +31,6 @@ KBUILD_CFLAGS	+= $(call cc-option,-fno-dwarf2-cfi-asm)
 
 # This should work on most of the modern platforms
 KBUILD_DEFCONFIG := multi_v7_defconfig
-ifeq ($(COMPILER),clang)
-KBUILD_CFLAGS += -Wa,-mno-warn-deprecated
-endif
 
 # defines filename extension depending memory management type.
 ifeq ($(CONFIG_MMU),)
@@ -42,16 +39,19 @@ KBUILD_CFLAGS	+= $(call cc-option,-mno-unaligned-access)
 endif
 
 ifeq ($(CONFIG_FRAME_POINTER),y)
-KBUILD_CFLAGS	+=-fno-omit-frame-pointer $(call cc-option,-mapcs,) $(call cc-option,-mno-sched-prolog,)
+KBUILD_CFLAGS	+=-fno-omit-frame-pointer
+ifeq ($(cc-name),gcc)
+KBUILD_CFLAGS += -mapcs -mno-sched-prolog
+endif
 endif
 
 ifeq ($(CONFIG_CPU_BIG_ENDIAN),y)
-KBUILD_CPPFLAGS	+= $(call cc-option,-mbig-endian)
+KBUILD_CPPFLAGS	+= -mbig-endian
 CHECKFLAGS	+= -D__ARMEB__
 AS		+= -EB
 LD		+= -EB
 else
-KBUILD_CPPFLAGS	+= $(call cc-option,-mlittle-endian)
+KBUILD_CPPFLAGS	+= -mlittle-endian
 CHECKFLAGS	+= -D__ARMEL__
 AS		+= -EL
 LD		+= -EL
@@ -118,6 +118,10 @@ ifeq ($(CONFIG_ARM_UNWIND),y)
 CFLAGS_ABI	+=-funwind-tables
 endif
 
+ifeq ($(cc-name),clang)
+CFLAGS_ABI	+= -meabi gnu
+endif
+
 # Accept old syntax despite ".syntax unified"
 AFLAGS_NOWARN	:=$(call as-option,-Wa$(comma)-mno-warn-deprecated,-Wa$(comma)-W)
 
@@ -135,7 +139,7 @@ AFLAGS_ISA	:=$(CFLAGS_ISA)
 endif
 
 # Need -Uarm for gcc < 3.x
-KBUILD_CFLAGS	+=$(CFLAGS_ABI) $(CFLAGS_ISA) $(arch-y) $(tune-y) $(call cc-option,-mshort-load-bytes,$(call cc-option,-malignment-traps,)) -msoft-float $(call cc-option, -Uarm,)
+KBUILD_CFLAGS	+=$(CFLAGS_ABI) $(CFLAGS_ISA) $(arch-y) $(tune-y) $(call cc-option,-mshort-load-bytes,$(call cc-option,-malignment-traps,)) -msoft-float -Uarm
 KBUILD_AFLAGS	+=$(CFLAGS_ABI) $(AFLAGS_ISA) $(arch-y) $(tune-y) -include asm/unified.h -msoft-float
 
 CHECKFLAGS	+= -D__arm__ -m32
@@ -216,6 +220,7 @@ machine-$(CONFIG_ARCH_SA1100)		+= sa1100
 machine-$(CONFIG_ARCH_SHMOBILE) 	+= shmobile
 machine-$(CONFIG_ARCH_SIRF)		+= prima2
 machine-$(CONFIG_ARCH_SOCFPGA)		+= socfpga
+machine-$(CONFIG_ARCH_SPRD)		+= sprd
 machine-$(CONFIG_ARCH_STI)		+= sti
 machine-$(CONFIG_ARCH_STM32)		+= stm32
 machine-$(CONFIG_ARCH_SUNXI)		+= sunxi
@@ -309,7 +314,7 @@ boot := arch/arm/boot
 ifeq ($(CONFIG_XIP_KERNEL),y)
 KBUILD_IMAGE := $(boot)/xipImage
 else ifeq ($(CONFIG_BUILD_ARM_APPENDED_DTB_IMAGE),y)
-KBUILD_IMAGE := $(boot)/$(subst $\",,$(CONFIG_BUILD_ARM_APPENDED_KERNEL_IMAGE_NAME))
+KBUILD_IMAGE := $(boot)/zImage-dtb
 else
 KBUILD_IMAGE := $(boot)/zImage
 endif
@@ -317,11 +322,19 @@ endif
 # Build the DT binary blobs if we have OF configured
 ifeq ($(CONFIG_USE_OF),y)
 KBUILD_DTBS := dtbs
+BUILD_DTC_PATH = $(subst $\",,$(CONFIG_BUILD_ARM_DTC))
+ifneq ($(BUILD_DTC_PATH),)
+    DTC = $(BUILD_DTC_PATH)
+endif
+
+BUILD_DTC_FLAGS = $(subst $\",,$(CONFIG_BUILD_ARM_DTC_FLAGS))
+ifneq ($(BUILD_DTC_FLAGS),)
+    DTC_FLAGS += $(BUILD_DTC_FLAGS)
+endif
 endif
 
 all:	$(notdir $(KBUILD_IMAGE)) $(KBUILD_DTBS)
 
-DTSSUBDIR	:= qcom
 
 archheaders:
 	$(Q)$(MAKE) $(build)=arch/arm/tools uapi
@@ -350,9 +363,13 @@ $(INSTALL_TARGETS):
 %.dtb: | scripts
 	$(Q)$(MAKE) $(build)=$(boot)/dts MACHINE=$(MACHINE) $(boot)/dts/$@
 
-dtbs: scripts
-	$(Q)$(MAKE) $(build)=$(boot)/dts MACHINE=$(MACHINE) dtbs
-	$(foreach DIR, $(DTSSUBDIR), $(Q)$(MAKE) $(build)=$(boot)/dts/$(DIR) MACHINE=$(MACHINE) dtbs)
+PHONY += dtbs dtbs_install
+
+dtbs: prepare scripts
+	$(Q)$(MAKE) $(build)=$(boot)/dts
+
+dtbs_install:
+	$(Q)$(MAKE) $(dtbinst)=$(boot)/dts
 
 PHONY += vdso_install
 vdso_install:
@@ -361,11 +378,7 @@ ifeq ($(CONFIG_VDSO),y)
 endif
 
 zImage-dtb: vmlinux scripts dtbs
-	$(Q)$(MAKE) $(build)=$(boot) MACHINE=$(MACHINE) DTSSUBDIR=$(DTSSUBDIR) $(boot)/$@
-
-Image-dtb: vmlinux scripts dtbs
-	$(Q)$(MAKE) $(build)=$(boot) MACHINE=$(MACHINE) DTSSUBDIR=$(DTSSUBDIR) $(boot)/$@
-
+	$(Q)$(MAKE) $(build)=$(boot) MACHINE=$(MACHINE) $(boot)/$@
 
 # We use MRPROPER_FILES and CLEAN_FILES now
 archclean:

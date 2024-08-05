@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -16,19 +16,8 @@
 #include "rmnet_private.h"
 #include "rmnet_vnd.h"
 
-#define RMNET_DL_IND_HDR_SIZE (sizeof(struct rmnet_map_dl_ind_hdr) + \
-			       sizeof(struct rmnet_map_header) + \
-			       sizeof(struct rmnet_map_control_command_header))
-
-#define RMNET_MAP_CMD_SIZE (sizeof(struct rmnet_map_header) + \
-			    sizeof(struct rmnet_map_control_command_header))
-
-#define RMNET_DL_IND_TRL_SIZE (sizeof(struct rmnet_map_dl_ind_trl) + \
-			       sizeof(struct rmnet_map_header) + \
-			       sizeof(struct rmnet_map_control_command_header))
-
 static u8 rmnet_map_do_flow_control(struct sk_buff *skb,
-				    struct rmnet_port *port,
+				    struct rmnet_port *rdinfo,
 				    int enable)
 {
 	struct rmnet_map_control_command *cmd;
@@ -48,12 +37,7 @@ static u8 rmnet_map_do_flow_control(struct sk_buff *skb,
 		return RX_HANDLER_CONSUMED;
 	}
 
-	ep = rmnet_get_endpoint(port, mux_id);
-	if (!ep) {
-		kfree_skb(skb);
-		return RX_HANDLER_CONSUMED;
-	}
-
+	ep = &rdinfo->muxed_ep[mux_id];
 	vnd = ep->egress_dev;
 
 	ip_family = cmd->flow_control.ip_family;
@@ -74,119 +58,26 @@ static u8 rmnet_map_do_flow_control(struct sk_buff *skb,
 }
 
 static void rmnet_map_send_ack(struct sk_buff *skb,
-			       unsigned char type,
-			       struct rmnet_port *port)
+			       unsigned char type)
 {
 	struct rmnet_map_control_command *cmd;
-	struct net_device *dev = skb->dev;
-
-	if (port->data_format & RMNET_FLAGS_INGRESS_MAP_CKSUMV4)
-		skb_trim(skb,
-			 skb->len - sizeof(struct rmnet_map_dl_csum_trailer));
+	int xmit_status;
 
 	skb->protocol = htons(ETH_P_MAP);
 
 	cmd = RMNET_MAP_GET_CMD_START(skb);
 	cmd->cmd_type = type & 0x03;
 
-	netif_tx_lock(dev);
-	dev->netdev_ops->ndo_start_xmit(skb, dev);
-	netif_tx_unlock(dev);
-}
-
-static  void rmnet_map_dl_hdr_notify(struct rmnet_port *port,
-				     struct rmnet_map_dl_ind_hdr *dlhdr)
-{
-	struct rmnet_map_dl_ind *tmp;
-
-	port->dl_marker_flush = 0;
-
-	list_for_each_entry(tmp, &port->dl_list, list)
-		tmp->dl_hdr_handler(dlhdr);
-}
-
-static  void rmnet_map_dl_trl_notify(struct rmnet_port *port,
-				     struct rmnet_map_dl_ind_trl *dltrl)
-{
-	struct rmnet_map_dl_ind *tmp;
-	struct napi_struct *napi;
-
-	list_for_each_entry(tmp, &port->dl_list, list)
-		tmp->dl_trl_handler(dltrl);
-
-	if (port->dl_marker_flush) {
-		napi = get_current_napi_context();
-		napi_gro_flush(napi, false);
-	}
-
-	port->dl_marker_flush = -1;
-}
-
-static void rmnet_map_process_flow_start(struct sk_buff *skb,
-					 struct rmnet_port *port,
-					 bool rmnet_perf)
-{
-	struct rmnet_map_dl_ind_hdr *dlhdr;
-
-	if (skb->len < RMNET_DL_IND_HDR_SIZE)
-		return;
-
-	skb_pull(skb, RMNET_MAP_CMD_SIZE);
-
-	dlhdr = (struct rmnet_map_dl_ind_hdr *)skb->data;
-
-	port->stats.dl_hdr_last_seq = dlhdr->le.seq;
-	port->stats.dl_hdr_last_bytes = dlhdr->le.bytes;
-	port->stats.dl_hdr_last_pkts = dlhdr->le.pkts;
-	port->stats.dl_hdr_last_flows = dlhdr->le.flows;
-	port->stats.dl_hdr_total_bytes += port->stats.dl_hdr_last_bytes;
-	port->stats.dl_hdr_total_pkts += port->stats.dl_hdr_last_pkts;
-	port->stats.dl_hdr_count++;
-
-	rmnet_map_dl_hdr_notify(port, dlhdr);
-	if (rmnet_perf) {
-		unsigned int pull_size;
-
-		pull_size = sizeof(struct rmnet_map_dl_ind_hdr);
-		if (port->data_format & RMNET_FLAGS_INGRESS_MAP_CKSUMV4)
-			pull_size += sizeof(struct rmnet_map_dl_csum_trailer);
-		skb_pull(skb, pull_size);
-	}
-
-}
-
-static void rmnet_map_process_flow_end(struct sk_buff *skb,
-				       struct rmnet_port *port,
-					   bool rmnet_perf)
-{
-	struct rmnet_map_dl_ind_trl *dltrl;
-
-	if (skb->len < RMNET_DL_IND_TRL_SIZE)
-		return;
-
-	skb_pull(skb, RMNET_MAP_CMD_SIZE);
-
-	dltrl = (struct rmnet_map_dl_ind_trl *)skb->data;
-
-	port->stats.dl_trl_last_seq = dltrl->seq_le;
-	port->stats.dl_trl_count++;
-
-	rmnet_map_dl_trl_notify(port, dltrl);
-	if (rmnet_perf) {
-		unsigned int pull_size;
-
-		pull_size = sizeof(struct rmnet_map_dl_ind_trl);
-		if (port->data_format & RMNET_FLAGS_INGRESS_MAP_CKSUMV4)
-			pull_size += sizeof(struct rmnet_map_dl_csum_trailer);
-		skb_pull(skb, pull_size);
-	}
-
+	netif_tx_lock(skb->dev);
+	xmit_status = skb->dev->netdev_ops->ndo_start_xmit(skb, skb->dev);
+	netif_tx_unlock(skb->dev);
 }
 
 /* Process MAP command frame and send N/ACK message as appropriate. Message cmd
  * name is decoded here and appropriate handler is called.
  */
-void rmnet_map_command(struct sk_buff *skb, struct rmnet_port *port)
+rx_handler_result_t rmnet_map_command(struct sk_buff *skb,
+				      struct rmnet_port *port)
 {
 	struct rmnet_map_control_command *cmd;
 	unsigned char command_name;
@@ -210,110 +101,6 @@ void rmnet_map_command(struct sk_buff *skb, struct rmnet_port *port)
 		break;
 	}
 	if (rc == RMNET_MAP_COMMAND_ACK)
-		rmnet_map_send_ack(skb, rc, port);
+		rmnet_map_send_ack(skb, rc);
+	return RX_HANDLER_CONSUMED;
 }
-
-int rmnet_map_flow_command(struct sk_buff *skb, struct rmnet_port *port,
-			   bool rmnet_perf)
-{
-	struct rmnet_map_control_command *cmd;
-	unsigned char command_name;
-
-	cmd = RMNET_MAP_GET_CMD_START(skb);
-	command_name = cmd->command_name;
-
-	switch (command_name) {
-	case RMNET_MAP_COMMAND_FLOW_START:
-		rmnet_map_process_flow_start(skb, port, rmnet_perf);
-		break;
-
-	case RMNET_MAP_COMMAND_FLOW_END:
-		rmnet_map_process_flow_end(skb, port, rmnet_perf);
-		break;
-
-	default:
-		return 1;
-	}
-
-	/* rmnet_perf module will handle the consuming */
-	if (!rmnet_perf)
-		consume_skb(skb);
-
-	return 0;
-}
-EXPORT_SYMBOL(rmnet_map_flow_command);
-
-void rmnet_map_cmd_exit(struct rmnet_port *port)
-{
-	struct rmnet_map_dl_ind *tmp, *idx;
-
-	list_for_each_entry_safe(tmp, idx, &port->dl_list, list)
-		list_del_rcu(&tmp->list);
-}
-
-void rmnet_map_cmd_init(struct rmnet_port *port)
-{
-	INIT_LIST_HEAD(&port->dl_list);
-
-	port->dl_marker_flush = -1;
-}
-
-int rmnet_map_dl_ind_register(struct rmnet_port *port,
-			      struct rmnet_map_dl_ind *dl_ind)
-{
-	struct rmnet_map_dl_ind *dl_ind_iterator;
-	bool empty_ind_list = true;
-
-	if (!port || !dl_ind || !dl_ind->dl_hdr_handler ||
-	    !dl_ind->dl_trl_handler)
-		return -EINVAL;
-
-	list_for_each_entry_rcu(dl_ind_iterator, &port->dl_list, list) {
-		empty_ind_list = false;
-		if (dl_ind_iterator->priority < dl_ind->priority) {
-			if (dl_ind_iterator->list.next) {
-				if (dl_ind->priority
-				    < list_entry_rcu(dl_ind_iterator->list.next,
-				    typeof(*dl_ind_iterator), list)->priority) {
-					list_add_rcu(&dl_ind->list,
-						     &dl_ind_iterator->list);
-					break;
-				}
-			} else {
-				list_add_rcu(&dl_ind->list,
-					     &dl_ind_iterator->list);
-				break;
-			}
-		} else {
-			list_add_tail_rcu(&dl_ind->list,
-					  &dl_ind_iterator->list);
-			break;
-		}
-	}
-
-	if (empty_ind_list)
-		list_add_rcu(&dl_ind->list, &port->dl_list);
-
-	return 0;
-}
-EXPORT_SYMBOL(rmnet_map_dl_ind_register);
-
-int rmnet_map_dl_ind_deregister(struct rmnet_port *port,
-				struct rmnet_map_dl_ind *dl_ind)
-{
-	struct rmnet_map_dl_ind *tmp;
-
-	if (!port || !dl_ind)
-		return -EINVAL;
-
-	list_for_each_entry(tmp, &port->dl_list, list) {
-		if (tmp == dl_ind) {
-			list_del_rcu(&dl_ind->list);
-			goto done;
-		}
-	}
-
-done:
-	return 0;
-}
-EXPORT_SYMBOL(rmnet_map_dl_ind_deregister);

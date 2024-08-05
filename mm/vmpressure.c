@@ -441,7 +441,7 @@ static void vmpressure_global(gfp_t gfp, unsigned long scanned,
 void vmpressure(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
 		unsigned long scanned, unsigned long reclaimed)
 {
-	if (!memcg && tree)
+	if (!memcg)
 		vmpressure_global(gfp, scanned, reclaimed);
 
 	if (IS_ENABLED(CONFIG_MEMCG))
@@ -536,7 +536,7 @@ int vmpressure_register_event(struct mem_cgroup *memcg,
 	/* Find required level */
 	token = strsep(&spec, ",");
 	level = str_to_level(token);
-	if ((int)level == -1) {
+	if (level == -1) {
 		ret = -EINVAL;
 		goto out;
 	}
@@ -545,7 +545,7 @@ int vmpressure_register_event(struct mem_cgroup *memcg,
 	token = strsep(&spec, ",");
 	if (token) {
 		mode = str_to_mode(token);
-		if ((int)mode == -1) {
+		if (mode == -1) {
 			ret = -EINVAL;
 			goto out;
 		}

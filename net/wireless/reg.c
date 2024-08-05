@@ -419,11 +419,6 @@ static bool is_user_regdom_saved(void)
 	return true;
 }
 
-static bool is_cfg80211_regdom_intersected(void)
-{
-	return is_intersected_alpha2(get_cfg80211_regdom()->alpha2);
-}
-
 static const struct ieee80211_regdomain *
 reg_copy_regd(const struct ieee80211_regdomain *src_regd)
 {
@@ -1691,9 +1686,7 @@ static void wiphy_update_regulatory(struct wiphy *wiphy,
 		 * as some drivers used this to restore its orig_* reg domain.
 		 */
 		if (initiator == NL80211_REGDOM_SET_BY_CORE &&
-		    wiphy->regulatory_flags & REGULATORY_CUSTOM_REG &&
-		    !(wiphy->regulatory_flags &
-		      REGULATORY_WIPHY_SELF_MANAGED))
+		    wiphy->regulatory_flags & REGULATORY_CUSTOM_REG)
 			reg_call_notifier(wiphy, lr);
 		return;
 	}
@@ -1889,14 +1882,9 @@ __reg_process_hint_user(struct regulatory_request *user_request)
 	 */
 	if ((lr->initiator == NL80211_REGDOM_SET_BY_CORE ||
 	     lr->initiator == NL80211_REGDOM_SET_BY_DRIVER ||
-	     lr->initiator == NL80211_REGDOM_SET_BY_USER)) {
-		if (lr->intersect) {
-			if (!is_cfg80211_regdom_intersected())
-				return REG_REQ_IGNORE;
-		} else if (regdom_changes(lr->alpha2)) {
-			return REG_REQ_IGNORE;
-		}
-	}
+	     lr->initiator == NL80211_REGDOM_SET_BY_USER) &&
+	    regdom_changes(lr->alpha2))
+		return REG_REQ_IGNORE;
 
 	if (!regdom_changes(user_request->alpha2))
 		return REG_REQ_ALREADY_SET;
@@ -2238,19 +2226,24 @@ out_free:
 	reg_free_request(reg_request);
 }
 
-static void notify_self_managed_wiphys(struct regulatory_request *request)
+static bool reg_only_self_managed_wiphys(void)
 {
 	struct cfg80211_registered_device *rdev;
 	struct wiphy *wiphy;
+	bool self_managed_found = false;
+
+	ASSERT_RTNL();
 
 	list_for_each_entry(rdev, &cfg80211_rdev_list, list) {
 		wiphy = &rdev->wiphy;
-		if (wiphy->regulatory_flags & REGULATORY_WIPHY_SELF_MANAGED &&
-		    request->initiator == NL80211_REGDOM_SET_BY_USER &&
-		    request->user_reg_hint_type ==
-				NL80211_USER_REG_HINT_CELL_BASE)
-			reg_call_notifier(wiphy, request);
+		if (wiphy->regulatory_flags & REGULATORY_WIPHY_SELF_MANAGED)
+			self_managed_found = true;
+		else
+			return false;
 	}
+
+	/* make sure at least one self-managed wiphy exists */
+	return self_managed_found;
 }
 
 /*
@@ -2284,7 +2277,10 @@ static void reg_process_pending_hints(void)
 
 	spin_unlock(&reg_requests_lock);
 
-	notify_self_managed_wiphys(reg_request);
+	if (reg_only_self_managed_wiphys()) {
+		reg_free_request(reg_request);
+		return;
+	}
 
 	reg_process_hint(reg_request);
 
@@ -2432,7 +2428,6 @@ int regulatory_hint_user(const char *alpha2,
 
 	return 0;
 }
-EXPORT_SYMBOL(regulatory_hint_user);
 
 int regulatory_hint_indoor(bool is_indoor, u32 portid)
 {
@@ -2851,7 +2846,7 @@ static void print_rd_rules(const struct ieee80211_regdomain *rd)
 		power_rule = &reg_rule->power_rule;
 
 		if (reg_rule->flags & NL80211_RRF_AUTO_BW)
-			snprintf(bw, sizeof(bw), "%d KHz, %u KHz AUTO",
+			snprintf(bw, sizeof(bw), "%d KHz, %d KHz AUTO",
 				 freq_range->max_bandwidth_khz,
 				 reg_get_max_bandwidth(rd, reg_rule));
 		else
@@ -3211,26 +3206,17 @@ EXPORT_SYMBOL(regulatory_set_wiphy_regd_sync_rtnl);
 
 void wiphy_regulatory_register(struct wiphy *wiphy)
 {
-	struct regulatory_request *lr = get_last_request();
+	struct regulatory_request *lr;
 
-	/* self-managed devices ignore beacon hints and country IE */
-	if (wiphy->regulatory_flags & REGULATORY_WIPHY_SELF_MANAGED) {
+	/* self-managed devices ignore external hints */
+	if (wiphy->regulatory_flags & REGULATORY_WIPHY_SELF_MANAGED)
 		wiphy->regulatory_flags |= REGULATORY_DISABLE_BEACON_HINTS |
 					   REGULATORY_COUNTRY_IE_IGNORE;
-
-		/*
-		 * The last request may have been received before this
-		 * registration call. Call the driver notifier if
-		 * initiator is USER and user type is CELL_BASE.
-		 */
-		if (lr->initiator == NL80211_REGDOM_SET_BY_USER &&
-		    lr->user_reg_hint_type == NL80211_USER_REG_HINT_CELL_BASE)
-			reg_call_notifier(wiphy, lr);
-	}
 
 	if (!reg_dev_ignore_cell_hint(wiphy))
 		reg_num_devs_support_basehint++;
 
+	lr = get_last_request();
 	wiphy_update_regulatory(wiphy, lr->initiator);
 	wiphy_all_share_dfs_chan_state(wiphy);
 }

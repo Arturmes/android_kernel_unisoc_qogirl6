@@ -722,7 +722,8 @@ static int gs_start_io(struct gs_port *port)
 		tty_wakeup(port->port.tty);
 	} else {
 		gs_free_requests(ep, head, &port->read_allocated);
-		gs_free_requests(port->port_usb->in, &port->write_pool,
+		if (port->port_usb)
+			gs_free_requests(port->port_usb->in, &port->write_pool,
 			&port->write_allocated);
 		status = -EIO;
 	}
@@ -823,7 +824,9 @@ static int gs_open(struct tty_struct *tty, struct file *file)
 		struct gserial	*gser = port->port_usb;
 
 		pr_debug("gs_open: start ttyGS%d\n", port->port_num);
-		gs_start_io(port);
+		status = gs_start_io(port);
+		if (status < 0)
+			goto exit_unlock_port;
 
 		if (gser->connect)
 			gser->connect(gser);
@@ -1303,13 +1306,9 @@ gs_port_alloc(unsigned port_num, struct usb_cdc_line_coding *coding)
 	}
 
 	tty_port_init(&port->port);
-	tty_buffer_set_limit(&port->port, 8388608);
 	spin_lock_init(&port->port_lock);
 	init_waitqueue_head(&port->drain_wait);
 	init_waitqueue_head(&port->close_wait);
-
-	pr_debug("%s open:ttyGS%d and set 8388608, avail:%d\n", __func__,
-		port_num, tty_buffer_space_avail(&port->port));
 
 	tasklet_init(&port->push, gs_rx_push, (unsigned long) port);
 
@@ -1480,7 +1479,11 @@ int gserial_connect(struct gserial *gser, u8 port_num)
 	 */
 	if (port->port.count) {
 		pr_debug("gserial_connect: start ttyGS%d\n", port->port_num);
-		gs_start_io(port);
+		status = gs_start_io(port);
+		if (status < 0) {
+			spin_unlock_irqrestore(&port->port_lock, flags);
+			goto fail_out;
+		}
 		if (gser->connect)
 			gser->connect(gser);
 	} else {

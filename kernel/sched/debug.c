@@ -275,14 +275,14 @@ sd_alloc_ctl_energy_table(struct sched_group_energy *sge)
 		return NULL;
 
 	set_table_entry(&table[0], "nr_idle_states", &sge->nr_idle_states,
-			sizeof(int), 0644, proc_dointvec_minmax, false);
+			sizeof(int), 0444, proc_dointvec_minmax, false);
 	set_table_entry(&table[1], "idle_states", &sge->idle_states[0].power,
-			sge->nr_idle_states*sizeof(struct idle_state), 0644,
+			sge->nr_idle_states*sizeof(struct idle_state), 0444,
 			proc_doulongvec_minmax, false);
 	set_table_entry(&table[2], "nr_cap_states", &sge->nr_cap_states,
-			sizeof(int), 0644, proc_dointvec_minmax, false);
+			sizeof(int), 0444, proc_dointvec_minmax, false);
 	set_table_entry(&table[3], "cap_states", &sge->cap_states[0].cap,
-			sge->nr_cap_states*sizeof(struct capacity_state), 0644,
+			sge->nr_cap_states*sizeof(struct capacity_state), 0444,
 			proc_doulongvec_minmax, false);
 
 	return table;
@@ -750,21 +750,6 @@ do {									\
 	P(cpu_load[2]);
 	P(cpu_load[3]);
 	P(cpu_load[4]);
-#ifdef CONFIG_SMP
-	P(cpu_capacity);
-#endif
-#ifdef CONFIG_SCHED_WALT
-	P(cluster->load_scale_factor);
-	P(cluster->capacity);
-	P(cluster->max_possible_capacity);
-	P(cluster->efficiency);
-	P(cluster->cur_freq);
-	P(cluster->max_freq);
-	P(cluster->exec_scale_factor);
-	P(walt_stats.nr_big_tasks);
-	SEQ_printf(m, "  .%-30s: %llu\n", "walt_stats.cumulative_runnable_avg",
-			rq->walt_stats.cumulative_runnable_avg_scaled);
-#endif
 #undef P
 #undef PN
 
@@ -843,13 +828,6 @@ static void sched_debug_header(struct seq_file *m)
 	PN(sysctl_sched_wakeup_granularity);
 	P(sysctl_sched_child_runs_first);
 	P(sysctl_sched_features);
-#ifdef CONFIG_SCHED_WALT
-	P(sched_init_task_load_windows);
-	P(min_capacity);
-	P(max_capacity);
-	P(sched_ravg_window);
-	P(sched_load_granule);
-#endif
 #undef PN
 #undef P
 
@@ -1070,9 +1048,6 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 		P_SCHEDSTAT(se.statistics.nr_wakeups_passive);
 		P_SCHEDSTAT(se.statistics.nr_wakeups_idle);
 
-#ifdef CONFIG_SCHED_WALT
-		P(ravg.demand);
-#endif
 		avg_atom = p->se.sum_exec_runtime;
 		if (nr_switches)
 			avg_atom = div64_ul(avg_atom, nr_switches);

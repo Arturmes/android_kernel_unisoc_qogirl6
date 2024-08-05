@@ -34,6 +34,8 @@
 #include <linux/pm_runtime.h>
 #include <linux/blk-cgroup.h>
 #include <linux/debugfs.h>
+#include <linux/psi.h>
+#include <linux/blk-crypto.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/block.h>
@@ -42,8 +44,6 @@
 #include "blk-mq.h"
 #include "blk-mq-sched.h"
 #include "blk-wbt.h"
-
-#include <linux/math64.h>
 
 #ifdef CONFIG_DEBUG_FS
 struct dentry *blk_debugfs_root;
@@ -1432,9 +1432,6 @@ static struct request *blk_old_get_request(struct request_queue *q,
 	/* q->queue_lock is unlocked at this point */
 	rq->__data_len = 0;
 	rq->__sector = (sector_t) -1;
-#ifdef CONFIG_PFK
-	rq->__dun = 0;
-#endif
 	rq->bio = rq->biotail = NULL;
 	return rq;
 }
@@ -1658,9 +1655,6 @@ bool bio_attempt_front_merge(struct request_queue *q, struct request *req,
 	bio->bi_next = req->bio;
 	req->bio = bio;
 
-#ifdef CONFIG_PFK
-	req->__dun = bio->bi_iter.bi_dun;
-#endif
 	req->__sector = bio->bi_iter.bi_sector;
 	req->__data_len += bio->bi_iter.bi_size;
 	req->ioprio = ioprio_best(req->ioprio, bio_prio(bio));
@@ -1810,9 +1804,6 @@ void blk_init_request_from_bio(struct request *req, struct bio *bio)
 	else
 		req->ioprio = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0);
 	req->write_hint = bio->bi_write_hint;
-#ifdef CONFIG_PFK
-	req->__dun = bio->bi_iter.bi_dun;
-#endif
 	blk_rq_bio_prep(req->q, req, bio);
 }
 EXPORT_SYMBOL_GPL(blk_init_request_from_bio);
@@ -2013,8 +2004,7 @@ static inline int blk_partition_remap(struct bio *bio)
 		trace_block_bio_remap(bio->bi_disk->queue, bio, part_devt(p),
 				bio->bi_iter.bi_sector - p->start_sect);
 	} else {
-		printk_ratelimited("%s: fail for partition %d\n",
-			__func__, bio->bi_partno);
+		printk("%s: fail for partition %d\n", __func__, bio->bi_partno);
 		ret = -EIO;
 	}
 	rcu_read_unlock();
@@ -2066,7 +2056,7 @@ generic_make_request_checks(struct bio *bio)
 
 	q = bio->bi_disk->queue;
 	if (unlikely(!q)) {
-		printk_ratelimited(KERN_ERR
+		printk(KERN_ERR
 		       "generic_make_request: Trying to access "
 			"nonexistent block-device %s (%Lu)\n",
 			bio_devname(bio, b), (long long)bio->bi_iter.bi_sector);
@@ -2238,7 +2228,9 @@ blk_qc_t generic_make_request(struct bio *bio)
 			/* Create a fresh bio_list for all subordinate requests */
 			bio_list_on_stack[1] = bio_list_on_stack[0];
 			bio_list_init(&bio_list_on_stack[0]);
-			ret = q->make_request_fn(q, bio);
+
+			if (!blk_crypto_submit_bio(&bio))
+				ret = q->make_request_fn(q, bio);
 
 			blk_queue_exit(q);
 
@@ -2283,6 +2275,10 @@ EXPORT_SYMBOL(generic_make_request);
  */
 blk_qc_t submit_bio(struct bio *bio)
 {
+	bool workingset_read = false;
+	unsigned long pflags;
+	blk_qc_t ret;
+
 	/*
 	 * If it's a regular read/write or a barrier with data attached,
 	 * go through the normal accounting stuff before submission.
@@ -2298,6 +2294,8 @@ blk_qc_t submit_bio(struct bio *bio)
 		if (op_is_write(bio_op(bio))) {
 			count_vm_events(PGPGOUT, count);
 		} else {
+			if (bio_flagged(bio, BIO_WORKINGSET))
+				workingset_read = true;
 			task_io_account_read(bio->bi_iter.bi_size);
 			count_vm_events(PGPGIN, count);
 		}
@@ -2312,7 +2310,21 @@ blk_qc_t submit_bio(struct bio *bio)
 		}
 	}
 
-	return generic_make_request(bio);
+	/*
+	 * If we're reading data that is part of the userspace
+	 * workingset, count submission time as memory stall. When the
+	 * device is congested, or the submitting cgroup IO-throttled,
+	 * submission can be a significant part of overall IO time.
+	 */
+	if (workingset_read)
+		psi_memstall_enter(&pflags);
+
+	ret = generic_make_request(bio);
+
+	if (workingset_read)
+		psi_memstall_leave(&pflags);
+
+	return ret;
 }
 EXPORT_SYMBOL(submit_bio);
 
@@ -2460,6 +2472,8 @@ void blk_account_io_completion(struct request *req, unsigned int bytes)
 		cpu = part_stat_lock();
 		part = req->part;
 		part_stat_add(cpu, part, sectors[rw], bytes >> 9);
+		if (req_op(req) == REQ_OP_DISCARD)
+			part_stat_add(cpu, part, discard_sectors, bytes >> 9);
 		part_stat_unlock();
 	}
 }
@@ -2484,10 +2498,17 @@ void blk_account_io_done(struct request *req)
 		part_stat_add(cpu, part, ticks[rw], duration);
 		part_round_stats(req->q, cpu, part);
 		part_dec_in_flight(req->q, part, rw);
+		if (req_op(req) == REQ_OP_DISCARD)
+			part_stat_inc(cpu, part, discard_ios);
+		if (!(req->rq_flags & RQF_STARTED))
+			part_stat_inc(cpu, part, flush_ios);
 
 		hd_struct_put(part);
 		part_stat_unlock();
 	}
+
+	if (req->rq_flags & RQF_FLUSH_SEQ)
+		req->q->flush_ios++;
 }
 
 #ifdef CONFIG_PM
@@ -2645,8 +2666,7 @@ struct request *blk_peek_request(struct request_queue *q)
 			__blk_end_request_all(rq, ret == BLKPREP_INVALID ?
 					BLK_STS_TARGET : BLK_STS_IOERR);
 		} else {
-			printk_ratelimited(KERN_ERR "%s: bad return=%d\n",
-				__func__, ret);
+			printk(KERN_ERR "%s: bad return=%d\n", __func__, ret);
 			break;
 		}
 	}
@@ -2670,6 +2690,8 @@ static void blk_dequeue_request(struct request *rq)
 	 * the driver side.
 	 */
 	if (blk_account_rq(rq)) {
+		if (!queue_in_flight(q))
+			q->in_flight_stamp = ktime_get();
 		q->in_flight[rq_is_sync(rq)]++;
 		set_io_start_time_ns(rq);
 	}
@@ -2800,13 +2822,8 @@ bool blk_update_request(struct request *req, blk_status_t error,
 	req->__data_len -= total_bytes;
 
 	/* update sector only for requests with clear definition of sector */
-	if (!blk_rq_is_passthrough(req)) {
+	if (!blk_rq_is_passthrough(req))
 		req->__sector += total_bytes >> 9;
-#ifdef CONFIG_PFK
-		if (req->__dun)
-			req->__dun += total_bytes >> 12;
-#endif
-	}
 
 	/* mixed attributes always follow the first bio */
 	if (req->rq_flags & RQF_MIXED_MERGE) {
@@ -3169,9 +3186,6 @@ static void __blk_rq_prep_clone(struct request *dst, struct request *src)
 {
 	dst->cpu = src->cpu;
 	dst->__sector = blk_rq_pos(src);
-#ifdef CONFIG_PFK
-	dst->__dun = blk_rq_dun(src);
-#endif
 	dst->__data_len = blk_rq_bytes(src);
 	if (src->rq_flags & RQF_SPECIAL_PAYLOAD) {
 		dst->rq_flags |= RQF_SPECIAL_PAYLOAD;
@@ -3669,87 +3683,11 @@ int __init blk_dev_init(void)
 	blk_debugfs_root = debugfs_create_dir("block", NULL);
 #endif
 
+	if (bio_crypt_ctx_init() < 0)
+		panic("Failed to allocate mem for bio crypt ctxs\n");
+
+	if (blk_crypto_fallback_init() < 0)
+		panic("Failed to init blk-crypto-fallback\n");
+
 	return 0;
 }
-
-/*
- * Blk IO latency support. We want this to be as cheap as possible, so doing
- * this lockless (and avoiding atomics), a few off by a few errors in this
- * code is not harmful, and we don't want to do anything that is
- * perf-impactful.
- * TODO : If necessary, we can make the histograms per-cpu and aggregate
- * them when printing them out.
- */
-void
-blk_zero_latency_hist(struct io_latency_state *s)
-{
-	memset(s->latency_y_axis_read, 0,
-	       sizeof(s->latency_y_axis_read));
-	memset(s->latency_y_axis_write, 0,
-	       sizeof(s->latency_y_axis_write));
-	s->latency_reads_elems = 0;
-	s->latency_writes_elems = 0;
-}
-EXPORT_SYMBOL(blk_zero_latency_hist);
-
-ssize_t
-blk_latency_hist_show(struct io_latency_state *s, char *buf)
-{
-	int i;
-	int bytes_written = 0;
-	u_int64_t num_elem, elem;
-	int pct;
-
-	num_elem = s->latency_reads_elems;
-	if (num_elem > 0) {
-		bytes_written += scnprintf(buf + bytes_written,
-			   PAGE_SIZE - bytes_written,
-			   "IO svc_time Read Latency Histogram (n = %llu):\n",
-			   num_elem);
-		for (i = 0;
-		     i < ARRAY_SIZE(latency_x_axis_us);
-		     i++) {
-			elem = s->latency_y_axis_read[i];
-			pct = div64_u64(elem * 100, num_elem);
-			bytes_written += scnprintf(buf + bytes_written,
-						   PAGE_SIZE - bytes_written,
-						   "\t< %5lluus%15llu%15d%%\n",
-						   latency_x_axis_us[i],
-						   elem, pct);
-		}
-		/* Last element in y-axis table is overflow */
-		elem = s->latency_y_axis_read[i];
-		pct = div64_u64(elem * 100, num_elem);
-		bytes_written += scnprintf(buf + bytes_written,
-					   PAGE_SIZE - bytes_written,
-					   "\t> %5dms%15llu%15d%%\n", 10,
-					   elem, pct);
-	}
-	num_elem = s->latency_writes_elems;
-	if (num_elem > 0) {
-		bytes_written += scnprintf(buf + bytes_written,
-			   PAGE_SIZE - bytes_written,
-			   "IO svc_time Write Latency Histogram (n = %llu):\n",
-			   num_elem);
-		for (i = 0;
-		     i < ARRAY_SIZE(latency_x_axis_us);
-		     i++) {
-			elem = s->latency_y_axis_write[i];
-			pct = div64_u64(elem * 100, num_elem);
-			bytes_written += scnprintf(buf + bytes_written,
-						   PAGE_SIZE - bytes_written,
-						   "\t< %5lluus%15llu%15d%%\n",
-						   latency_x_axis_us[i],
-						   elem, pct);
-		}
-		/* Last element in y-axis table is overflow */
-		elem = s->latency_y_axis_write[i];
-		pct = div64_u64(elem * 100, num_elem);
-		bytes_written += scnprintf(buf + bytes_written,
-					   PAGE_SIZE - bytes_written,
-					   "\t> %5dms%15llu%15d%%\n", 10,
-					   elem, pct);
-	}
-	return bytes_written;
-}
-EXPORT_SYMBOL(blk_latency_hist_show);

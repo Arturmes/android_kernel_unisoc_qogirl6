@@ -794,11 +794,9 @@ int perf_event__synthesize_kernel_mmap(struct perf_tool *tool,
 	int err;
 	union perf_event *event;
 
-	if (map == NULL)
+	if (symbol_conf.kptr_restrict)
 		return -1;
-
-	kmap = map__kmap(map);
-	if (!kmap->ref_reloc_sym)
+	if (map == NULL)
 		return -1;
 
 	/*
@@ -824,6 +822,7 @@ int perf_event__synthesize_kernel_mmap(struct perf_tool *tool,
 		event->header.misc = PERF_RECORD_MISC_GUEST_KERNEL;
 	}
 
+	kmap = map__kmap(map);
 	size = snprintf(event->mmap.filename, sizeof(event->mmap.filename),
 			"%s%s", mmap_name, kmap->ref_reloc_sym->name) + 1;
 	size = PERF_ALIGN(size, sizeof(u64));

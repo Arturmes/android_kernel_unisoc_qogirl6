@@ -34,6 +34,8 @@
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
 
+#include <linux/trusty/smcall.h>
+
 /*
  * While a 64-bit OS can make calls with SMC32 calling conventions, for some
  * calls it is necessary to use SMC64 to pass or return 64-bit values.
@@ -53,11 +55,6 @@
  * require cooperation with a Trusted OS driver.
  */
 static int resident_cpu = -1;
-
-bool psci_tos_resident_on(int cpu)
-{
-	return cpu == resident_cpu;
-}
 
 struct psci_operations psci_ops = {
 	.conduit = PSCI_CONDUIT_NONE,
@@ -155,10 +152,26 @@ static u32 psci_get_version(void)
 	return invoke_psci_fn(PSCI_0_2_FN_PSCI_VERSION, 0, 0, 0);
 }
 
+bool psci_tos_resident_on(int cpu)
+{
+	/*
+	 * To diff the three case of no trusty, trusty can down,
+	 * trusty can't down. invert the return values of
+	 * psci_tos_resident_on() and trusty
+	 */
+	return !invoke_psci_fn(SMC_FC_CPU_CAN_DOWN, cpu, 0, 0);
+}
+
 static int psci_cpu_suspend(u32 state, unsigned long entry_point)
 {
 	int err;
 	u32 fn;
+
+	u32 cpu_id;
+
+	cpu_id = smp_processor_id();
+	if (psci_tos_resident_on(cpu_id))
+		return -EPERM;
 
 	fn = psci_function_id[PSCI_FN_CPU_SUSPEND];
 	err = invoke_psci_fn(fn, state, entry_point, 0);
@@ -251,16 +264,6 @@ static int get_set_conduit_method(struct device_node *np)
 	return 0;
 }
 
-static void psci_sys_reset(enum reboot_mode reboot_mode, const char *cmd)
-{
-	invoke_psci_fn(PSCI_0_2_FN_SYSTEM_RESET, 0, 0, 0);
-}
-
-static void psci_sys_poweroff(void)
-{
-	invoke_psci_fn(PSCI_0_2_FN_SYSTEM_OFF, 0, 0, 0);
-}
-
 static int __init psci_features(u32 psci_func_id)
 {
 	return invoke_psci_fn(PSCI_1_0_FN_PSCI_FEATURES,
@@ -268,9 +271,8 @@ static int __init psci_features(u32 psci_func_id)
 }
 
 #ifdef CONFIG_CPU_IDLE
-static __maybe_unused DEFINE_PER_CPU_READ_MOSTLY(u32 *, psci_power_state);
+static DEFINE_PER_CPU_READ_MOSTLY(u32 *, psci_power_state);
 
-#ifdef CONFIG_DT_IDLE_STATES
 static int psci_dt_cpu_init_idle(struct device_node *cpu_node, int cpu)
 {
 	int i, ret, count = 0;
@@ -323,10 +325,6 @@ free_mem:
 	kfree(psci_states);
 	return ret;
 }
-#else
-static int psci_dt_cpu_init_idle(struct device_node *cpu_node, int cpu)
-{ return 0; }
-#endif
 
 #ifdef CONFIG_ACPI
 #include <acpi/processor.h>
@@ -402,26 +400,29 @@ int psci_cpu_init_idle(unsigned int cpu)
 	return ret;
 }
 
-static int psci_suspend_finisher(unsigned long state_id)
+static int psci_suspend_finisher(unsigned long index)
 {
-	return psci_ops.cpu_suspend(state_id,
+	u32 *state = __this_cpu_read(psci_power_state);
+
+	return psci_ops.cpu_suspend(state[index - 1],
 				    __pa_symbol(cpu_resume));
 }
-int psci_cpu_suspend_enter(unsigned long state_id)
+
+int psci_cpu_suspend_enter(unsigned long index)
 {
 	int ret;
-
+	u32 *state = __this_cpu_read(psci_power_state);
 	/*
 	 * idle state index 0 corresponds to wfi, should never be called
 	 * from the cpu_suspend operations
 	 */
-	if (WARN_ON_ONCE(!state_id))
+	if (WARN_ON_ONCE(!index))
 		return -EINVAL;
 
-	if (!psci_power_state_loses_context(state_id))
-		ret = psci_ops.cpu_suspend(state_id, 0);
+	if (!psci_power_state_loses_context(state[index - 1]))
+		ret = psci_ops.cpu_suspend(state[index - 1], 0);
 	else
-		ret = cpu_suspend(state_id, psci_suspend_finisher);
+		ret = cpu_suspend(index, psci_suspend_finisher);
 
 	return ret;
 }
@@ -560,10 +561,6 @@ static void __init psci_0_2_set_functions(void)
 	psci_ops.affinity_info = psci_affinity_info;
 
 	psci_ops.migrate_info_type = psci_migrate_info_type;
-
-	arm_pm_restart = psci_sys_reset;
-
-	pm_power_off = psci_sys_poweroff;
 }
 
 /*

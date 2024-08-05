@@ -22,6 +22,7 @@
 #include <linux/kthread.h>
 #include <linux/freezer.h>
 #include <linux/page_owner.h>
+#include <linux/psi.h>
 #include "internal.h"
 
 #ifdef CONFIG_COMPACTION
@@ -631,50 +632,18 @@ isolate_freepages_range(struct compact_control *cc,
 }
 
 /* Similar to reclaim, but different enough that they don't share logic */
-static bool __too_many_isolated(struct zone *zone, int safe)
+static bool too_many_isolated(struct zone *zone)
 {
 	unsigned long active, inactive, isolated;
 
-	if (safe) {
-		inactive = node_page_state_snapshot(zone->zone_pgdat,
-			NR_INACTIVE_FILE) +
-			node_page_state_snapshot(zone->zone_pgdat,
-			NR_INACTIVE_ANON);
-		active = node_page_state_snapshot(zone->zone_pgdat,
-			NR_ACTIVE_FILE) +
-			node_page_state_snapshot(zone->zone_pgdat,
-			NR_ACTIVE_ANON);
-		isolated = node_page_state_snapshot(zone->zone_pgdat,
-			NR_ISOLATED_FILE) +
-			node_page_state_snapshot(zone->zone_pgdat,
-			NR_ISOLATED_ANON);
-	} else {
-		inactive = node_page_state(zone->zone_pgdat, NR_INACTIVE_FILE) +
+	inactive = node_page_state(zone->zone_pgdat, NR_INACTIVE_FILE) +
 			node_page_state(zone->zone_pgdat, NR_INACTIVE_ANON);
-		active = node_page_state(zone->zone_pgdat, NR_ACTIVE_FILE) +
+	active = node_page_state(zone->zone_pgdat, NR_ACTIVE_FILE) +
 			node_page_state(zone->zone_pgdat, NR_ACTIVE_ANON);
-		isolated = node_page_state(zone->zone_pgdat, NR_ISOLATED_FILE) +
+	isolated = node_page_state(zone->zone_pgdat, NR_ISOLATED_FILE) +
 			node_page_state(zone->zone_pgdat, NR_ISOLATED_ANON);
-	}
 
 	return isolated > (inactive + active) / 2;
-}
-
-/* Similar to reclaim, but different enough that they don't share logic */
-static bool too_many_isolated(struct compact_control *cc)
-{
-	/*
-	 * __too_many_isolated(safe=0) is fast but inaccurate, because it
-	 * doesn't account for the vm_stat_diff[] counters.  So if it looks
-	 * like too_many_isolated() is about to return true, fall back to the
-	 * slower, more accurate zone_page_state_snapshot().
-	 */
-	if (unlikely(__too_many_isolated(cc->zone, 0))) {
-		if (cc->mode != MIGRATE_ASYNC)
-			return __too_many_isolated(cc->zone, 1);
-	}
-
-	return false;
 }
 
 /**
@@ -714,7 +683,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 	 * list by either parallel reclaimers or compaction. If there are,
 	 * delay for some time until fewer pages are isolated
 	 */
-	while (unlikely(too_many_isolated(cc))) {
+	while (unlikely(too_many_isolated(zone))) {
 		/* async migration should just abort */
 		if (cc->mode == MIGRATE_ASYNC)
 			return 0;
@@ -2061,11 +2030,15 @@ static int kcompactd(void *p)
 	pgdat->kcompactd_classzone_idx = pgdat->nr_zones - 1;
 
 	while (!kthread_should_stop()) {
+		unsigned long pflags;
+
 		trace_mm_compaction_kcompactd_sleep(pgdat->node_id);
 		wait_event_freezable(pgdat->kcompactd_wait,
 				kcompactd_work_requested(pgdat));
 
+		psi_memstall_enter(&pflags);
 		kcompactd_do_work(pgdat);
+		psi_memstall_leave(&pflags);
 	}
 
 	return 0;

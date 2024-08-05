@@ -314,7 +314,6 @@ static inline void spi_unregister_driver(struct spi_driver *sdrv)
  * @max_speed_hz: Highest supported transfer speed
  * @flags: other constraints relevant to this driver
  * @slave: indicates that this is an SPI slave controller
- * @slave_state: indicates state of SPI slave controller
  * @max_transfer_size: function that returns the max transfer size for
  *	a &spi_device; may be %NULL, so the default %SIZE_MAX will be used.
  * @max_message_size: function that returns the max message size for
@@ -455,9 +454,6 @@ struct spi_controller {
 
 	/* flag indicating this is an SPI slave controller */
 	bool			slave;
-
-	/* flag indicating SPI slave controller state */
-	bool                    slave_state;
 
 	/*
 	 * on some hardware transfer / message size may be constrained
@@ -642,25 +638,6 @@ static inline struct spi_controller *spi_alloc_slave(struct device *host,
 	return __spi_alloc_controller(host, size, true);
 }
 
-struct spi_controller *__devm_spi_alloc_controller(struct device *dev,
-						   unsigned int size,
-						   bool slave);
-
-static inline struct spi_controller *devm_spi_alloc_master(struct device *dev,
-							   unsigned int size)
-{
-	return __devm_spi_alloc_controller(dev, size, false);
-}
-
-static inline struct spi_controller *devm_spi_alloc_slave(struct device *dev,
-							  unsigned int size)
-{
-	if (!IS_ENABLED(CONFIG_SPI_SLAVE))
-		return NULL;
-
-	return __devm_spi_alloc_controller(dev, size, true);
-}
-
 extern int spi_register_controller(struct spi_controller *ctlr);
 extern int devm_spi_register_controller(struct device *dev,
 					struct spi_controller *ctlr);
@@ -738,6 +715,8 @@ extern void spi_res_release(struct spi_controller *ctlr,
  * @delay_usecs: microseconds to delay after this transfer before
  *	(optionally) changing the chipselect status, then starting
  *	the next transfer or completing this @spi_message.
+ * @word_delay: clock cycles to inter word delay after each word size
+ *	(set by bits_per_word) transmission.
  * @transfer_list: transfers are sequenced through @spi_message.transfers
  * @tx_sg: Scatterlist for transmit, currently not for client use
  * @rx_sg: Scatterlist for receive, currently not for client use
@@ -820,6 +799,7 @@ struct spi_transfer {
 	u8		bits_per_word;
 	u16		delay_usecs;
 	u32		speed_hz;
+	u16		word_delay;
 
 	struct list_head transfer_list;
 };

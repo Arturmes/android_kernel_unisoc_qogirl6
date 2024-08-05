@@ -9,7 +9,6 @@ menu "Serial drivers"
 
 config SERIAL_EARLYCON
 	bool
-	depends on SERIAL_CORE
 	help
 	  Support for early consoles with the earlycon parameter. This enables
 	  the console before standard serial driver is probed. The console is
@@ -1099,43 +1098,6 @@ config SERIAL_MSM_CONSOLE
 	select SERIAL_CORE_CONSOLE
 	select SERIAL_EARLYCON
 
-config SERIAL_RX_CONSOLE_ONLY
-	bool "MSM serial rx only console support"
-	depends on SERIAL_MSM=y
-	select SERIAL_MSM_CONSOLE
-	help
-	 This enable RX i.e. input receive functionality only of
-	 generic serial driver while silencing TX i.e. kernel logging
-	 output to console functionality.
-	 If you want to enable RX only console say Y else say N.
-
-config SERIAL_MSM_GENI
-	tristate "MSM on-chip GENI HW based serial port support"
-	depends on ARCH_QCOM
-	select SERIAL_CORE
-	help
-	    Serial driver for Qualcomm Technologies Inc's GENI based QUPv3
-	    hardware.
-	    The driver supports console and High speed UART functions.
-
-config SERIAL_MSM_GENI_CONSOLE
-	tristate "MSM on-chip GENI HW based console support"
-	depends on SERIAL_MSM_GENI=y
-	select SERIAL_CORE_CONSOLE
-	select SERIAL_EARLYCON
-
-config SERIAL_MSM_HS
-	tristate "MSM UART High Speed: Serial Driver"
-	depends on ARCH_QCOM
-	select SERIAL_CORE
-	help
-	  If you have a machine based on MSM family of SoCs, you
-	  can enable its onboard high speed serial port by enabling
-	  this option.
-
-	  Choose M here to compile it as a module. The module will be
-	  called msm_serial_hs.
-
 config SERIAL_VT8500
 	bool "VIA VT8500 on-chip serial port support"
 	depends on ARCH_VT8500
@@ -1674,6 +1636,13 @@ config SERIAL_SPRD
 	help
 	  This enables the driver for the Spreadtrum's serial.
 
+config SERIAL_SPRD_EX
+	tristate "Support for Spreadtrum serial by sipc"
+	depends on SPRD_SIPC
+	select SERIAL_CORE
+	help
+	  This enables the driver for the Spreadtrum's serial.
+
 config SERIAL_SPRD_CONSOLE
 	bool "Spreadtrum UART console support"
 	depends on SERIAL_SPRD=y
@@ -1744,6 +1713,11 @@ config SERIAL_OWL_CONSOLE
 	help
 	  Say 'Y' here if you wish to use Actions Semiconductor S500/S900 UART
 	  as the system console.
+config SPRD_SERIAL_GCOV
+	bool "open gcov for serial"
+	depends on GCOV_PROFILE_MODULES
+	help
+	  Say Y here to enable gcov in serial.
 
 endmenu
 

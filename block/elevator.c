@@ -443,7 +443,7 @@ enum elv_merge elv_merge(struct request_queue *q, struct request **req,
 {
 	struct elevator_queue *e = q->elevator;
 	struct request *__rq;
-	enum elv_merge ret;
+
 	/*
 	 * Levels of merges:
 	 * 	nomerges:  No merges at all attempted
@@ -456,11 +456,9 @@ enum elv_merge elv_merge(struct request_queue *q, struct request **req,
 	/*
 	 * First try one-hit cache.
 	 */
-	if (q->last_merge) {
-		if (!elv_bio_merge_ok(q->last_merge, bio))
-			return ELEVATOR_NO_MERGE;
+	if (q->last_merge && elv_bio_merge_ok(q->last_merge, bio)) {
+		enum elv_merge ret = blk_try_merge(q->last_merge, bio);
 
-		ret = blk_try_merge(q->last_merge, bio);
 		if (ret != ELEVATOR_NO_MERGE) {
 			*req = q->last_merge;
 			return ret;
@@ -803,6 +801,8 @@ void elv_completed_request(struct request_queue *q, struct request *rq)
 	 */
 	if (blk_account_rq(rq)) {
 		q->in_flight[rq_is_sync(rq)]--;
+		if (!queue_in_flight(q))
+			q->in_flight_time += ktime_us_delta(ktime_get(), q->in_flight_stamp);
 		if ((rq->rq_flags & RQF_SORTED) &&
 		    e->type->ops.sq.elevator_completed_req_fn)
 			e->type->ops.sq.elevator_completed_req_fn(q, rq);

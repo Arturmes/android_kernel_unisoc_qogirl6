@@ -266,6 +266,7 @@ struct sock_common {
   *	@sk_route_nocaps: forbidden route capabilities (e.g NETIF_F_GSO_MASK)
   *	@sk_gso_type: GSO type (e.g. %SKB_GSO_TCPV4)
   *	@sk_gso_max_size: Maximum GSO segment size to build
+  *	@sk_gso_max_segs: Maximum number of GSO segments
   *	@sk_pacing_shift: scaling factor for TCP Small Queues
   *	@sk_lingertime: %SO_LINGER l_linger setting
   *	@sk_backlog: always used with the per-socket spinlock held
@@ -2443,15 +2444,5 @@ static inline void sk_pacing_shift_update(struct sock *sk, int val)
 		return;
 	sk->sk_pacing_shift = val;
 }
-/* SOCKEV Notifier Events */
-#define SOCKEV_SOCKET   0x00
-#define SOCKEV_BIND     0x01
-#define SOCKEV_LISTEN   0x02
-#define SOCKEV_ACCEPT   0x03
-#define SOCKEV_CONNECT  0x04
-#define SOCKEV_SHUTDOWN 0x05
-
-int sockev_register_notify(struct notifier_block *nb);
-int sockev_unregister_notify(struct notifier_block *nb);
 
 #endif	/* _SOCK_H */

@@ -85,7 +85,6 @@ obj-$(CONFIG_I2C_PUV3)		+= i2c-puv3.o
 obj-$(CONFIG_I2C_PXA)		+= i2c-pxa.o
 obj-$(CONFIG_I2C_PXA_PCI)	+= i2c-pxa-pci.o
 obj-$(CONFIG_I2C_QUP)		+= i2c-qup.o
-obj-$(CONFIG_I2C_QCOM_GENI)     += i2c-qcom-geni.o
 obj-$(CONFIG_I2C_RIIC)		+= i2c-riic.o
 obj-$(CONFIG_I2C_RK3X)		+= i2c-rk3x.o
 obj-$(CONFIG_I2C_S3C2410)	+= i2c-s3c2410.o
@@ -94,6 +93,8 @@ obj-$(CONFIG_I2C_SH_MOBILE)	+= i2c-sh_mobile.o
 obj-$(CONFIG_I2C_SIMTEC)	+= i2c-simtec.o
 obj-$(CONFIG_I2C_SIRF)		+= i2c-sirf.o
 obj-$(CONFIG_I2C_SPRD)		+= i2c-sprd.o
+obj-$(CONFIG_I2C_SPRD_HW)	+= i2c-sprd-hw.o
+obj-$(CONFIG_I2C_SPRD_HW_V2)	+= i2c-sprd-hw-v2.o
 obj-$(CONFIG_I2C_ST)		+= i2c-st.o
 obj-$(CONFIG_I2C_STM32F4)	+= i2c-stm32f4.o
 obj-$(CONFIG_I2C_STM32F7)	+= i2c-stm32f7.o
@@ -113,7 +114,6 @@ obj-$(CONFIG_I2C_XILINX)	+= i2c-xiic.o
 obj-$(CONFIG_I2C_XLR)		+= i2c-xlr.o
 obj-$(CONFIG_I2C_XLP9XX)	+= i2c-xlp9xx.o
 obj-$(CONFIG_I2C_RCAR)		+= i2c-rcar.o
-obj-$(CONFIG_I2C_MSM_V2)        += i2c-msm-v2.o
 obj-$(CONFIG_I2C_ZX2967)	+= i2c-zx2967.o
 
 # External I2C/SMBus adapter drivers

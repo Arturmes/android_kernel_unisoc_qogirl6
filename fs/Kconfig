@@ -8,6 +8,10 @@ menu "File systems"
 config DCACHE_WORD_ACCESS
        bool
 
+config INTERRUPTIBLE_SYNC
+        bool "Support interruptible sync for Samsung Mobile Device"
+	default y
+
 if BLOCK
 
 config FS_IOMAP
@@ -97,6 +101,8 @@ config MANDATORY_FILE_LOCKING
 
 source "fs/crypto/Kconfig"
 
+source "fs/verity/Kconfig"
+
 source "fs/notify/Kconfig"
 
 source "fs/quota/Kconfig"
@@ -104,6 +110,7 @@ source "fs/quota/Kconfig"
 source "fs/autofs4/Kconfig"
 source "fs/fuse/Kconfig"
 source "fs/overlayfs/Kconfig"
+source "fs/incfs/Kconfig"
 
 menu "Caches"
 
@@ -125,6 +132,7 @@ if BLOCK
 menu "DOS/FAT/NT Filesystems"
 
 source "fs/fat/Kconfig"
+source "fs/sdfat/Kconfig"
 source "fs/ntfs/Kconfig"
 
 endmenu
@@ -308,10 +316,12 @@ endif # NETWORK_FILESYSTEMS
 
 source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
+source "fs/unicode/Kconfig"
 
-config FILE_TABLE_DEBUG
-	bool "Enable FILE_TABLE_DEBUG"
+config SPRD_FS_GCOV
+	bool "open gcov for fs"
+	depends on GCOV_PROFILE_MODULES
 	help
-	  This option enables debug of the open files using a global filetable
+	  Say Y here to enable fs gcov
 
 endmenu

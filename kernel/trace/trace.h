@@ -526,12 +526,6 @@ enum {
 
 	TRACE_GRAPH_DEPTH_START_BIT,
 	TRACE_GRAPH_DEPTH_END_BIT,
-
-	/*
-	 * When transitioning between context, the preempt_count() may
-	 * not be correct. Allow for a single recursion to cover this case.
-	 */
-	TRACE_TRANSITION_BIT,
 };
 
 #define trace_recursion_set(bit)	do { (current)->trace_recursion |= (1<<(bit)); } while (0)
@@ -586,27 +580,14 @@ static __always_inline int trace_test_and_set_recursion(int start, int max)
 		return 0;
 
 	bit = trace_get_context_bit() + start;
-	if (unlikely(val & (1 << bit))) {
-		/*
-		 * It could be that preempt_count has not been updated during
-		 * a switch between contexts. Allow for a single recursion.
-		 */
-		bit = TRACE_TRANSITION_BIT;
-		if (trace_recursion_test(bit))
-			return -1;
-		trace_recursion_set(bit);
-		barrier();
-		return bit + 1;
-	}
-
-	/* Normal check passed, clear the transition to allow it again */
-	trace_recursion_clear(TRACE_TRANSITION_BIT);
+	if (unlikely(val & (1 << bit)))
+		return -1;
 
 	val |= 1 << bit;
 	current->trace_recursion = val;
 	barrier();
 
-	return bit + 1;
+	return bit;
 }
 
 static __always_inline void trace_clear_recursion(int bit)
@@ -616,7 +597,6 @@ static __always_inline void trace_clear_recursion(int bit)
 	if (!bit)
 		return;
 
-	bit--;
 	bit = 1 << bit;
 	val &= ~bit;
 
@@ -739,15 +719,13 @@ void update_max_tr_single(struct trace_array *tr,
 #endif /* CONFIG_TRACER_MAX_TRACE */
 
 #ifdef CONFIG_STACKTRACE
-void ftrace_trace_userstack(struct trace_array *tr,
-			    struct ring_buffer *buffer, unsigned long flags,
+void ftrace_trace_userstack(struct ring_buffer *buffer, unsigned long flags,
 			    int pc);
 
 void __trace_stack(struct trace_array *tr, unsigned long flags, int skip,
 		   int pc);
 #else
-static inline void ftrace_trace_userstack(struct trace_array *tr,
-					  struct ring_buffer *buffer,
+static inline void ftrace_trace_userstack(struct ring_buffer *buffer,
 					  unsigned long flags, int pc)
 {
 }
@@ -1405,7 +1383,6 @@ __event_trigger_test_discard(struct trace_event_file *file,
  * @entry: The event itself
  * @irq_flags: The state of the interrupts at the start of the event
  * @pc: The state of the preempt count at the start of the event.
- * @len: The length of the payload data required for stm logging.
  *
  * This is a helper function to handle triggers that require data
  * from the event itself. It also tests the event against filters and
@@ -1415,17 +1392,12 @@ static inline void
 event_trigger_unlock_commit(struct trace_event_file *file,
 			    struct ring_buffer *buffer,
 			    struct ring_buffer_event *event,
-			    void *entry, unsigned long irq_flags, int pc,
-			    unsigned long len)
+			    void *entry, unsigned long irq_flags, int pc)
 {
 	enum event_trigger_type tt = ETT_NONE;
 
-	if (!__event_trigger_test_discard(file, buffer, event, entry, &tt)) {
-		if (len)
-			stm_log(OST_ENTITY_FTRACE_EVENTS, entry, len);
-
+	if (!__event_trigger_test_discard(file, buffer, event, entry, &tt))
 		trace_buffer_unlock_commit(file->tr, buffer, event, irq_flags, pc);
-	}
 
 	if (tt)
 		event_triggers_post_call(file, tt, entry);

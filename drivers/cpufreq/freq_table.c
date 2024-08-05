@@ -58,9 +58,6 @@ int cpufreq_frequency_table_cpuinfo(struct cpufreq_policy *policy,
 	policy->min = policy->cpuinfo.min_freq = min_freq;
 	policy->max = policy->cpuinfo.max_freq = max_freq;
 
-	if (max_freq > cpuinfo_max_freq_cached)
-		cpuinfo_max_freq_cached = max_freq;
-
 	if (policy->min == ~0)
 		return -EINVAL;
 	else
@@ -150,7 +147,7 @@ int cpufreq_table_index_unsorted(struct cpufreq_policy *policy,
 		freq = pos->frequency;
 
 		i = pos - table;
-		if ((freq < policy->min) || (freq > policy->max))
+		if ((freq < policy->cpuinfo.min_freq) || (freq > policy->cpuinfo.max_freq))
 			continue;
 		if (freq == target_freq) {
 			optimal.driver_data = i;

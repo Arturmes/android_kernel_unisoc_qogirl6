@@ -1,7 +1,7 @@
 /*
  * Gadget Function Driver for PTP
  *
- * Copyright (C) 2014 Google, Inc.
+ * Copyright (C) 2018 Google, Inc.
  * Author: Badhri Jagan Sridharan <badhri@android.com>
  *
  * This software is licensed under the terms of the GNU General Public

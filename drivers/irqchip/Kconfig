@@ -35,22 +35,12 @@ config ARM_GIC_V3
 	select MULTI_IRQ_HANDLER
 	select IRQ_DOMAIN_HIERARCHY
 	select PARTITION_PERCPU
-	select QCOM_SHOW_RESUME_IRQ
 	select GENERIC_IRQ_EFFECTIVE_AFF_MASK
 
 config ARM_GIC_V3_ITS
 	bool
 	depends on PCI
 	depends on PCI_MSI
-
-config ARM_GIC_V3_ACL
-	bool "GICv3 Access control"
-	depends on ARM_GIC_V3
-	help
-	  Access to GIC ITS address space is controlled by EL2.
-	  Kernel has no permission to access GIC ITS address space.
-	  If you wish to enforce the Acces control then set this
-	  option to Y, if you are unsure please say N.
 
 config ARM_NVIC
 	bool
@@ -123,16 +113,6 @@ config BRCMSTB_L2_IRQ
 	bool
 	select GENERIC_IRQ_CHIP
 	select IRQ_DOMAIN
-
-config QCOM_SHOW_RESUME_IRQ
-	bool "Enable logging of interrupts that could have caused resume"
-	depends on ARM_GIC
-	default n
-	help
-	  This option logs wake up interrupts that have triggered just before
-	  the resume loop unrolls. It helps to debug to know any unnecessary
-	  wake up interrupts that causes system to come out of low power modes.
-	  Say Y if you want to debug why the system resumed.
 
 config DW_APB_ICTL
 	bool
@@ -342,4 +322,13 @@ config IRQ_UNIPHIER_AIDET
 	help
 	  Support for the UniPhier AIDET (ARM Interrupt Detector).
 
-source "drivers/irqchip/qcom/Kconfig"
+config SPRD_IPA_INTC
+	bool "Spreadtrum IPA level2 interrupt controller"
+	depends on ARCH_SPRD || COMPILE_TEST
+	select GENERIC_IRQ_CHIP
+	select IRQ_DOMAIN
+	help
+	 Say yes here to support for the spreadtrum IPA level2 interrupt.
+	 Some PCIe legacy IRQs are connected to ipa level2 interrupt controller
+	 directly, which can support 32 IRQs. If someone wants to use spreadtrum
+	 PCIe legacy IRQ, he or she must say yes here.

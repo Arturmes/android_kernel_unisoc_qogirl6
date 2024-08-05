@@ -13,11 +13,10 @@
 
 OBJCOPYFLAGS	:=-O binary -R .comment -S
 
-include $(srctree)/arch/arm/boot/dts/Makefile
-ifneq ($(DTSSUBDIR),)
-DTSSUBDIR_INCS=$(foreach DIR, $(DTSSUBDIR), $(addsuffix /Makefile, $(addprefix $(srctree)/arch/arm/boot/dts/, $(DIR))))
-include $(DTSSUBDIR_INCS)
+ifneq ($(MACHINE),)
+include $(MACHINE)/Makefile.boot
 endif
+include $(srctree)/arch/arm/boot/dts/Makefile
 
 # Note: the following conditions must always be true:
 #   ZRELADDR == virt_to_phys(PAGE_OFFSET + TEXT_OFFSET)
@@ -58,14 +57,8 @@ $(obj)/xipImage: FORCE
 
 $(obj)/Image: vmlinux FORCE
 	$(call if_changed,objcopy)
-
-$(obj)/Image-dtb-hdr: $(obj)/Image FORCE
-	echo -n 'UNCOMPRESSED_IMG' > $@ && \
-	$(call size_append, $(filter-out FORCE,$^)) >> $@
-
-$(obj)/Image-dtb: $(obj)/Image-dtb-hdr $(obj)/Image $(DTB_OBJS) FORCE
-	$(call if_changed,cat)
-	@echo '  Kernel: $@ is ready'
+	@/usr/bin/size vmlinux
+	@/bin/grep module_layout Module.symvers || echo "NULL module_layout version!"
 
 $(obj)/compressed/vmlinux: $(obj)/Image FORCE
 	$(Q)$(MAKE) $(build)=$(obj)/compressed $@

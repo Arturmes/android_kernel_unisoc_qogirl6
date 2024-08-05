@@ -39,9 +39,13 @@
 #include <linux/bitops.h>
 #include <linux/init_task.h>
 #include <linux/uaccess.h>
+#include <linux/avc_backtrace.h>
 
 #include "internal.h"
 #include "mount.h"
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/namei.h>
 
 /* [Feb-1997 T. Schoebel-Theuer]
  * Fundamental changes in the pathname lookup mechanisms (namei)
@@ -52,8 +56,8 @@
  * The new code replaces the old recursive symlink resolution with
  * an iterative one (in case of non-nested symlink chains).  It does
  * this with calls to <fs>_follow_link().
- * As a side effect, dir_namei(), _namei() and follow_link() are now
- * replaced with a single function lookup_dentry() that can handle all
+ * As a side effect, dir_namei(), _namei() and follow_link() are now 
+ * replaced with a single function lookup_dentry() that can handle all 
  * the special cases of the former code.
  *
  * With the new dcache, the pathname is stored at each inode, at least as
@@ -312,6 +316,11 @@ static int acl_permission_check(struct inode *inode, int mask)
 	 */
 	if ((mask & ~mode & (MAY_READ | MAY_WRITE | MAY_EXEC)) == 0)
 		return 0;
+#ifdef CONFIG_SECURITY_SELINUX
+	if (avc_backtrace_enable == 1)
+		pr_err("check supplement group domaininfo: pid:%d comm:%s,uid:%d,gid:%d, fileinfo: uid:%d, gid:%d,ino:%d \n",
+		current->pid, current->comm, current_fsuid().val, current_fsgid().val, inode->i_uid.val, inode->i_gid.val, inode->i_ino);
+#endif
 	return -EACCES;
 }
 
@@ -801,6 +810,81 @@ static inline int d_revalidate(struct dentry *dentry, unsigned int flags)
 		return 1;
 }
 
+#define INIT_PATH_SIZE 64
+
+static void success_walk_trace(struct nameidata *nd)
+{
+	struct path *pt = &nd->path;
+	struct inode *i = nd->inode;
+	char buf[INIT_PATH_SIZE], *try_buf;
+	int cur_path_size;
+	char *p;
+
+	/* When eBPF/ tracepoint is disabled, keep overhead low. */
+	if (!trace_inodepath_enabled())
+		return;
+
+	/* First try stack allocated buffer. */
+	try_buf = buf;
+	cur_path_size = INIT_PATH_SIZE;
+
+	while (cur_path_size <= PATH_MAX) {
+		/* Free previous heap allocation if we are now trying
+		 * a second or later heap allocation.
+		 */
+		if (try_buf != buf)
+			kfree(try_buf);
+
+		/* All but the first alloc are on the heap. */
+		if (cur_path_size != INIT_PATH_SIZE) {
+			try_buf = kmalloc(cur_path_size, GFP_KERNEL);
+			if (!try_buf) {
+				try_buf = buf;
+				sprintf(try_buf, "error:buf_alloc_failed");
+				break;
+			}
+		}
+
+		p = d_path(pt, try_buf, cur_path_size);
+
+		if (!IS_ERR(p)) {
+			char *end = mangle_path(try_buf, p, "\n");
+
+			if (end) {
+				try_buf[end - try_buf] = 0;
+				break;
+			} else {
+				/* On mangle errors, double path size
+				 * till PATH_MAX.
+				 */
+				cur_path_size = cur_path_size << 1;
+				continue;
+			}
+		}
+
+		if (PTR_ERR(p) == -ENAMETOOLONG) {
+			/* If d_path complains that name is too long,
+			 * then double path size till PATH_MAX.
+			 */
+			cur_path_size = cur_path_size << 1;
+			continue;
+		}
+
+		sprintf(try_buf, "error:d_path_failed_%lu",
+			-1 * PTR_ERR(p));
+		break;
+	}
+
+	if (cur_path_size > PATH_MAX)
+		sprintf(try_buf, "error:d_path_name_too_long");
+
+	trace_inodepath(i, try_buf);
+
+	if (try_buf != buf)
+		kfree(try_buf);
+	return;
+}
+
 /**
  * complete_walk - successful completion of path walk
  * @nd:  pointer nameidata
@@ -823,15 +907,21 @@ static int complete_walk(struct nameidata *nd)
 			return -ECHILD;
 	}
 
-	if (likely(!(nd->flags & LOOKUP_JUMPED)))
+	if (likely(!(nd->flags & LOOKUP_JUMPED))) {
+		success_walk_trace(nd);
 		return 0;
+	}
 
-	if (likely(!(dentry->d_flags & DCACHE_OP_WEAK_REVALIDATE)))
+	if (likely(!(dentry->d_flags & DCACHE_OP_WEAK_REVALIDATE))) {
+		success_walk_trace(nd);
 		return 0;
+	}
 
 	status = dentry->d_op->d_weak_revalidate(dentry, nd->flags);
-	if (status > 0)
+	if (status > 0) {
+		success_walk_trace(nd);
 		return 0;
+	}
 
 	if (!status)
 		status = -ESTALE;
@@ -1098,7 +1188,7 @@ const char *get_link(struct nameidata *nd)
 		return ERR_PTR(error);
 
 	nd->last_type = LAST_BIND;
-	res = inode->i_link;
+	res = READ_ONCE(inode->i_link);
 	if (!res) {
 		const char * (*get)(struct dentry *, struct inode *,
 				struct delayed_call *);
@@ -2955,11 +3045,6 @@ int vfs_create2(struct vfsmount *mnt, struct inode *dir, struct dentry *dentry,
 	if (error)
 		return error;
 	error = dir->i_op->create(dir, dentry, mode, want_excl);
-	if (error)
-		return error;
-	error = security_inode_post_create(dir, dentry, mode);
-	if (error)
-		return error;
 	if (!error)
 		fsnotify_create(dir, dentry);
 	return error;
@@ -3482,7 +3567,7 @@ out:
 	return error;
 }
 
-struct dentry *vfs_tmpfile(struct vfsmount *mnt, struct dentry *dentry, umode_t mode, int open_flag)
+struct dentry *vfs_tmpfile(struct dentry *dentry, umode_t mode, int open_flag)
 {
 	struct dentry *child = NULL;
 	struct inode *dir = dentry->d_inode;
@@ -3490,7 +3575,8 @@ struct dentry *vfs_tmpfile(struct vfsmount *mnt, struct dentry *dentry, umode_t 
 	int error;
 
 	/* we want directory to be writable */
-	error = inode_permission2(mnt, dir, MAY_WRITE | MAY_EXEC);
+	error = inode_permission2(ERR_PTR(-EOPNOTSUPP), dir,
+					MAY_WRITE | MAY_EXEC);
 	if (error)
 		goto out_err;
 	error = -EOPNOTSUPP;
@@ -3532,7 +3618,7 @@ static int do_tmpfile(struct nameidata *nd, unsigned flags,
 	error = mnt_want_write(path.mnt);
 	if (unlikely(error))
 		goto out;
-	child = vfs_tmpfile(path.mnt, path.dentry, op->mode, op->open_flag);
+	child = vfs_tmpfile(path.dentry, op->mode, op->open_flag);
 	error = PTR_ERR(child);
 	if (unlikely(IS_ERR(child)))
 		goto out2;
@@ -3623,8 +3709,6 @@ out2:
 				error = -ESTALE;
 		}
 		file = ERR_PTR(error);
-	} else {
-		global_filetable_add(file);
 	}
 	return file;
 }
@@ -3792,11 +3876,6 @@ int vfs_mknod2(struct vfsmount *mnt, struct inode *dir, struct dentry *dentry, u
 		return error;
 
 	error = dir->i_op->mknod(dir, dentry, mode, dev);
-	if (error)
-		return error;
-	error = security_inode_post_create(dir, dentry, mode);
-	if (error)
-		return error;
 	if (!error)
 		fsnotify_create(dir, dentry);
 	return error;
@@ -4026,6 +4105,10 @@ retry:
 	if (error)
 		goto exit3;
 	error = vfs_rmdir2(path.mnt, path.dentry->d_inode, dentry);
+#ifdef CONFIG_PROC_DLOG
+	if (!error)
+		dlog_hook_rmdir(dentry, &path);
+#endif
 exit3:
 	dput(dentry);
 exit2:
@@ -4156,6 +4239,10 @@ retry_deleg:
 		if (error)
 			goto exit2;
 		error = vfs_unlink2(path.mnt, path.dentry->d_inode, dentry, &delegated_inode);
+#ifdef CONFIG_PROC_DLOG
+		if (!error)
+			dlog_hook(dentry, inode, &path);
+#endif
 exit2:
 		dput(dentry);
 	}
@@ -4810,8 +4897,10 @@ static int generic_readlink(struct dentry *dentry, char __user *buffer,
 {
 	DEFINE_DELAYED_CALL(done);
 	struct inode *inode = d_inode(dentry);
-	const char *link = inode->i_link;
+	const char *link;
 	int res;
+
+	link = READ_ONCE(inode->i_link);
 
 	if (!link) {
 		link = inode->i_op->get_link(dentry, inode, &done);

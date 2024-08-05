@@ -13,7 +13,9 @@
 #include <linux/mutex.h>
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
+#ifdef CONFIG_SPRD_CORE_CTL
 #include <linux/sched/idle.h>
+#endif
 #include <linux/notifier.h>
 #include <linux/pm_qos.h>
 #include <linux/cpu.h>
@@ -642,6 +644,7 @@ EXPORT_SYMBOL_GPL(cpuidle_register);
 
 #ifdef CONFIG_SMP
 
+#ifdef CONFIG_SPRD_CORE_CTL
 static void wake_up_idle_cpus(void *v)
 {
 	int cpu;
@@ -661,17 +664,23 @@ static void wake_up_idle_cpus(void *v)
 	}
 	preempt_enable();
 }
+#endif
 
 /*
  * This function gets called when a part of the kernel has a new latency
- * requirement.  This means we need to get only those processors out of their
- * C-state for which qos requirement is changed, and then recalculate a new
- * suitable C-state. Just do a cross-cpu IPI; that wakes them all right up.
+ * requirement.  This means we need to get all processors out of their C-state,
+ * and then recalculate a new suitable C-state. Just do a cross-cpu IPI; that
+ * wakes them all right up.
  */
 static int cpuidle_latency_notify(struct notifier_block *b,
 		unsigned long l, void *v)
 {
+#ifdef CONFIG_SPRD_CORE_CTL
 	wake_up_idle_cpus(v);
+#else
+	wake_up_all_idle_cpus();
+#endif
+
 	return NOTIFY_OK;
 }
 

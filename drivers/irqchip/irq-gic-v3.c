@@ -28,7 +28,8 @@
 #include <linux/of_irq.h>
 #include <linux/percpu.h>
 #include <linux/slab.h>
-#include <linux/msm_rtb.h>
+#include <linux/wakeup_reason.h>
+
 
 #include <linux/irqchip.h>
 #include <linux/irqchip/arm-gic-common.h>
@@ -40,9 +41,9 @@
 #include <asm/smp_plat.h>
 #include <asm/virt.h>
 
-#include <linux/syscore_ops.h>
-
 #include "irq-gic-common.h"
+
+#include <linux/sprd_ktp.h>
 
 struct redist_region {
 	void __iomem		*redist_base;
@@ -99,7 +100,7 @@ static void gic_do_wait_for_rwp(void __iomem *base)
 {
 	u32 count = 1000000;	/* 1s! */
 
-	while (readl_relaxed_no_log(base + GICD_CTLR) & GICD_CTLR_RWP) {
+	while (readl_relaxed(base + GICD_CTLR) & GICD_CTLR_RWP) {
 		count--;
 		if (!count) {
 			pr_err_ratelimited("RWP timeout, gone fishing\n");
@@ -180,8 +181,7 @@ static int gic_peek_irq(struct irq_data *d, u32 offset)
 	else
 		base = gic_data.dist_base;
 
-	return !!(readl_relaxed_no_log
-		(base + offset + (gic_irq(d) / 32) * 4) & mask);
+	return !!(readl_relaxed(base + offset + (gic_irq(d) / 32) * 4) & mask);
 }
 
 static void gic_poke_irq(struct irq_data *d, u32 offset)
@@ -333,69 +333,6 @@ static int gic_irq_set_vcpu_affinity(struct irq_data *d, void *vcpu)
 	return 0;
 }
 
-#ifdef CONFIG_PM
-
-static int gic_suspend(void)
-{
-	return 0;
-}
-
-static void gic_show_resume_irq(struct gic_chip_data *gic)
-{
-	unsigned int i;
-	u32 enabled;
-	u32 pending[32];
-	void __iomem *base = gic_data.dist_base;
-
-	if (!msm_show_resume_irq_mask)
-		return;
-
-	for (i = 0; i * 32 < gic->irq_nr; i++) {
-		enabled = readl_relaxed(base + GICD_ICENABLER + i * 4);
-		pending[i] = readl_relaxed(base + GICD_ISPENDR + i * 4);
-		pending[i] &= enabled;
-	}
-
-	for (i = find_first_bit((unsigned long *)pending, gic->irq_nr);
-	     i < gic->irq_nr;
-	     i = find_next_bit((unsigned long *)pending, gic->irq_nr, i+1)) {
-		unsigned int irq = irq_find_mapping(gic->domain, i);
-		struct irq_desc *desc = irq_to_desc(irq);
-		const char *name = "null";
-
-		if (desc == NULL)
-			name = "stray irq";
-		else if (desc->action && desc->action->name)
-			name = desc->action->name;
-
-		pr_warn("%s: %d triggered %s\n", __func__, irq, name);
-	}
-}
-
-static void gic_resume_one(struct gic_chip_data *gic)
-{
-	gic_show_resume_irq(gic);
-}
-
-static void gic_resume(void)
-{
-	gic_resume_one(&gic_data);
-}
-
-static struct syscore_ops gic_syscore_ops = {
-	.suspend = gic_suspend,
-	.resume = gic_resume,
-};
-
-static int __init gic_init_sys(void)
-{
-	register_syscore_ops(&gic_syscore_ops);
-	return 0;
-}
-arch_initcall(gic_init_sys);
-
-#endif
-
 static u64 gic_mpidr_to_affinity(unsigned long mpidr)
 {
 	u64 aff;
@@ -418,7 +355,8 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 		if (likely(irqnr > 15 && irqnr < 1020) || irqnr >= 8192) {
 			int err;
 
-			uncached_logk(LOGK_IRQ, (void *)(uintptr_t)irqnr);
+			kevent_tp(KTP_IRQ, (void *)(uintptr_t)irqnr);
+
 			if (static_key_true(&supports_deactivate))
 				gic_write_eoir(irqnr);
 			else
@@ -427,6 +365,8 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 			err = handle_domain_irq(gic_data.domain, irqnr, regs);
 			if (err) {
 				WARN_ONCE(true, "Unexpected interrupt received!\n");
+				log_abnormal_wakeup_reason(
+						"unexpected HW IRQ %u", irqnr);
 				if (static_key_true(&supports_deactivate)) {
 					if (irqnr < 8192)
 						gic_write_dir(irqnr);
@@ -437,7 +377,7 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 			continue;
 		}
 		if (irqnr < 16) {
-			uncached_logk(LOGK_IRQ, (void *)(uintptr_t)irqnr);
+			kevent_tp(KTP_IRQ, (void *)(uintptr_t)irqnr);
 			gic_write_eoir(irqnr);
 			if (static_key_true(&supports_deactivate))
 				gic_write_dir(irqnr);
@@ -651,8 +591,7 @@ static void gic_cpu_init(void)
 	gic_cpu_config(rbase, gic_redist_wait_for_rwp);
 
 	/* Give LPIs a spin */
-	if (IS_ENABLED(CONFIG_ARM_GIC_V3_ITS) && gic_dist_supports_lpis() &&
-					!IS_ENABLED(CONFIG_ARM_GIC_V3_ACL))
+	if (IS_ENABLED(CONFIG_ARM_GIC_V3_ITS) && gic_dist_supports_lpis())
 		its_cpu_init();
 
 	/* initialise system registers */
@@ -809,9 +748,6 @@ static bool gic_dist_security_disabled(void)
 static int gic_cpu_pm_notifier(struct notifier_block *self,
 			       unsigned long cmd, void *v)
 {
-	if (from_suspend)
-		return NOTIFY_OK;
-
 	if (cmd == CPU_PM_EXIT) {
 		if (gic_dist_security_disabled())
 			gic_enable_redist(true);
@@ -845,7 +781,9 @@ static struct irq_chip gic_chip = {
 	.irq_set_affinity	= gic_set_affinity,
 	.irq_get_irqchip_state	= gic_irq_get_irqchip_state,
 	.irq_set_irqchip_state	= gic_irq_set_irqchip_state,
-	.flags			= IRQCHIP_SET_TYPE_MASKED,
+	.flags			= IRQCHIP_SET_TYPE_MASKED |
+				  IRQCHIP_SKIP_SET_WAKE |
+				  IRQCHIP_MASK_ON_SUSPEND,
 };
 
 static struct irq_chip gic_eoimode1_chip = {
@@ -858,7 +796,9 @@ static struct irq_chip gic_eoimode1_chip = {
 	.irq_get_irqchip_state	= gic_irq_get_irqchip_state,
 	.irq_set_irqchip_state	= gic_irq_set_irqchip_state,
 	.irq_set_vcpu_affinity	= gic_irq_set_vcpu_affinity,
-	.flags			= IRQCHIP_SET_TYPE_MASKED,
+	.flags			= IRQCHIP_SET_TYPE_MASKED |
+				  IRQCHIP_SKIP_SET_WAKE |
+				  IRQCHIP_MASK_ON_SUSPEND,
 };
 
 #define GIC_ID_NR		(1U << gic_data.rdists.id_bits)
@@ -1084,8 +1024,7 @@ static int __init gic_init_bases(void __iomem *dist_base,
 
 	gic_update_vlpi_properties();
 
-	if (IS_ENABLED(CONFIG_ARM_GIC_V3_ITS) && gic_dist_supports_lpis() &&
-			!IS_ENABLED(CONFIG_ARM_GIC_V3_ACL))
+	if (IS_ENABLED(CONFIG_ARM_GIC_V3_ITS) && gic_dist_supports_lpis())
 		its_init(handle, &gic_data.rdists, gic_data.domain);
 
 	gic_smp_init();
@@ -1110,6 +1049,31 @@ static int __init gic_validate_dist_version(void __iomem *dist_base)
 		return -ENODEV;
 
 	return 0;
+}
+
+static int get_cpu_number(struct device_node *dn)
+{
+	const __be32 *cell;
+	u64 hwid;
+	int cpu;
+
+	cell = of_get_property(dn, "reg", NULL);
+	if (!cell)
+		return -1;
+
+	hwid = of_read_number(cell, of_n_addr_cells(dn));
+
+	/*
+	 * Non affinity bits must be set to 0 in the DT
+	 */
+	if (hwid & ~MPIDR_HWID_BITMASK)
+		return -1;
+
+	for_each_possible_cpu(cpu)
+		if (cpu_logical_map(cpu) == hwid)
+			return cpu;
+
+	return -1;
 }
 
 /* Create all possible partitions at boot time */
@@ -1162,8 +1126,8 @@ static void __init gic_populate_ppi_partitions(struct device_node *gic_node)
 			if (WARN_ON(!cpu_node))
 				continue;
 
-			cpu = of_cpu_node_to_id(cpu_node);
-			if (WARN_ON(cpu < 0))
+			cpu = get_cpu_number(cpu_node);
+			if (WARN_ON(cpu == -1))
 				continue;
 
 			pr_cont("%pOF[%d] ", cpu_node, cpu);
@@ -1228,7 +1192,7 @@ static void __init gic_of_setup_kvm_info(struct device_node *node)
 	gic_set_kvm_info(&gic_v3_kvm_info);
 }
 
-static int __init gic_of_init(struct device_node *node, struct device_node *parent)
+static int __init gicv3_of_init(struct device_node *node, struct device_node *parent)
 {
 	void __iomem *dist_base;
 	struct redist_region *rdist_regs;
@@ -1293,7 +1257,13 @@ out_unmap_dist:
 	return err;
 }
 
-IRQCHIP_DECLARE(gic_v3, "arm,gic-v3", gic_of_init);
+unsigned long gic_get_gicd_base(void)
+{
+	return (unsigned long)gic_data.dist_base;
+}
+EXPORT_SYMBOL(gic_get_gicd_base);
+
+IRQCHIP_DECLARE(gic_v3, "arm,gic-v3", gicv3_of_init);
 
 #ifdef CONFIG_ACPI
 static struct
@@ -1609,4 +1579,127 @@ IRQCHIP_ACPI_DECLARE(gic_v4, ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR,
 IRQCHIP_ACPI_DECLARE(gic_v3_or_v4, ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR,
 		     acpi_validate_gic_table, ACPI_MADT_GIC_VERSION_NONE,
 		     gic_acpi_init);
+#endif
+
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+#include <linux/uaccess.h>
+static unsigned int g_debug_hwirq;
+
+static unsigned int read_hwirq_regs_state(unsigned int hwirq, u32 offset)
+{
+	u32 mask = 1 << (hwirq % 32);
+	return !!(readl_relaxed(gic_data.dist_base + offset
+		+ (hwirq / 32) * 4) & mask);
+}
+static int hwirq_gic_show(struct seq_file *m, void *v)
+{
+	unsigned int pending, enable, active;
+
+	if ((g_debug_hwirq < 32) || (g_debug_hwirq > 1019)) {
+		seq_printf(m, "hwirq[%d] should be more than 32 and less than 1019\n",
+			g_debug_hwirq);
+
+		return -EINVAL;
+	}
+
+	pending = read_hwirq_regs_state((unsigned int)g_debug_hwirq, GICD_ISPENDR);
+	enable = read_hwirq_regs_state((unsigned int)g_debug_hwirq, GICD_ISACTIVER);
+	active = read_hwirq_regs_state((unsigned int)g_debug_hwirq, GICD_ISENABLER);
+	seq_printf(m, "hwirq[%d]: pending[%d],enable[%d],active[%d]\n",
+		g_debug_hwirq, pending, enable, active);
+
+	return 0;
+}
+
+static int hwirq_open(struct inode *inodep, struct file *filep)
+{
+	single_open(filep, hwirq_gic_show, NULL);
+
+	return 0;
+}
+
+enum gicv3_debug_enable{
+	SPRD_NONE,
+	SPRD_ENABLE,
+	SPRD_DISABLE
+};
+
+static ssize_t notrace hwirq_gic_write(struct file *filep,
+	const char __user *buf, size_t len, loff_t *ppos)
+{
+	unsigned int hwirq;
+	int ret;
+	unsigned int enable, val;
+	u32 mask;
+
+	char *kbuf = kzalloc(len, GFP_KERNEL);
+	if (!kbuf)
+		return -ENOMEM;
+
+	if (copy_from_user(kbuf, buf, len)) {
+		ret = -EFAULT;
+		goto hwirq_out;
+	}
+
+	if (strstr(kbuf, "-d"))
+		enable = SPRD_DISABLE;
+	else if (strstr(kbuf, "-e"))
+		enable = SPRD_ENABLE;
+	else
+		enable = SPRD_NONE;
+
+	hwirq = (unsigned int)strtoul(kbuf, NULL, 10);
+
+	if ((hwirq < 32) || (hwirq > 1019)) {
+		ret = -EINVAL;
+		goto hwirq_out;
+	}
+
+	mask = 1 << (hwirq % 32);
+	if (enable == SPRD_DISABLE)
+		writel_relaxed(mask, gic_data.dist_base + GICD_ICENABLER + (hwirq / 32) * 4);
+	else if (enable == SPRD_ENABLE)
+		writel_relaxed(mask, gic_data.dist_base + GICD_ISENABLER + (hwirq / 32) * 4);
+	if (enable)
+		gic_dist_wait_for_rwp();
+
+	g_debug_hwirq = hwirq;
+	ret = len;
+
+	val = read_hwirq_regs_state(hwirq, GICD_ISPENDR);
+	pr_emerg("hwirq[%d], pending=%d\n", hwirq, val);
+
+	val = read_hwirq_regs_state(hwirq, GICD_ISACTIVER);
+	pr_emerg("hwirq[%d], active=%d\n", hwirq, val);
+
+	val = read_hwirq_regs_state(hwirq, GICD_ISENABLER);
+	pr_emerg("hwirq[%d], enable=%d\n", hwirq, val);
+
+hwirq_out:
+	kfree(kbuf);
+
+	return ret;
+}
+const struct file_operations hwirq_gic_fops = {
+	.open    = hwirq_open,
+	.read    = seq_read,
+	.write	 = hwirq_gic_write,
+	.llseek  = seq_lseek,
+	.release = single_release,
+};
+
+static int __init create_gic_debugfs(void)
+{
+	struct dentry *gic_monitor;
+
+	gic_monitor = debugfs_create_dir("gicv3", NULL);
+	if (gic_monitor) {
+		debugfs_create_file("hwirq", (S_IRUGO | S_IWUSR | S_IWGRP),
+				    gic_monitor, NULL, &hwirq_gic_fops);
+	}
+
+	return 0;
+}
+fs_initcall(create_gic_debugfs);
 #endif

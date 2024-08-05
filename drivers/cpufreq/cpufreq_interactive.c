@@ -24,15 +24,16 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/rwsem.h>
-#include <linux/sched/cpufreq.h>
+#include <linux/sched.h>
 #include <linux/sched/rt.h>
+#include <linux/sched/cpufreq.h>
+#include <linux/sched/types.h>
 #include <linux/sched/task.h>
 #include <linux/tick.h>
 #include <linux/time.h>
 #include <linux/timer.h>
 #include <linux/kthread.h>
 #include <linux/slab.h>
-#include <uapi/linux/sched/types.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/cpufreq_interactive.h>
@@ -69,7 +70,7 @@ struct interactive_tunables {
 	 * The minimum amount of time to spend at a frequency before we can ramp
 	 * down.
 	 */
-#define DEFAULT_MIN_SAMPLE_TIME (80 * USEC_PER_MSEC)
+#define DEFAULT_MIN_SAMPLE_TIME (10 * USEC_PER_MSEC)
 	unsigned long min_sample_time;
 
 	/* The sample rate of the timer used to increase frequency */
@@ -95,7 +96,7 @@ struct interactive_tunables {
 	 * Max additional time to wait in idle, beyond sampling_rate, at speeds
 	 * above minimum before wakeup to reduce speed, or -1 if unnecessary.
 	 */
-#define DEFAULT_TIMER_SLACK (4 * DEFAULT_SAMPLING_RATE)
+#define DEFAULT_TIMER_SLACK (10 * USEC_PER_MSEC)
 	unsigned long timer_slack_delay;
 	unsigned long timer_slack;
 	bool io_is_busy;
@@ -110,6 +111,7 @@ struct interactive_policy {
 
 /* Separate instance required for each CPU */
 struct interactive_cpu {
+	int cpu;
 	struct update_util_data update_util;
 	struct interactive_policy *ipolicy;
 
@@ -119,6 +121,9 @@ struct interactive_cpu {
 	bool work_in_progress;
 
 	struct rw_semaphore enable_sem;
+#ifdef CONFIG_INTERACTIVE_TIMER_MODE
+	struct timer_list cpu_timer;
+#endif
 	struct timer_list slack_timer;
 
 	spinlock_t load_lock; /* protects the next 4 fields */
@@ -172,7 +177,7 @@ static bool timer_slack_required(struct interactive_cpu *icpu)
 	struct interactive_policy *ipolicy = icpu->ipolicy;
 	struct interactive_tunables *tunables = ipolicy->tunables;
 
-	if (tunables->timer_slack < 0)
+	if (tunables->timer_slack == 0)
 		return false;
 
 	if (icpu->target_freq > ipolicy->policy->min)
@@ -195,6 +200,23 @@ static void gov_slack_timer_modify(struct interactive_cpu *icpu)
 
 	mod_timer(&icpu->slack_timer, jiffies + tunables->timer_slack_delay);
 }
+
+#ifdef CONFIG_INTERACTIVE_TIMER_MODE
+static void interactive_timer_resched(struct interactive_cpu *icpu, int cpu,
+				bool modify)
+{
+	struct interactive_tunables *tunables = icpu->ipolicy->tunables;
+
+	if (modify) {
+		mod_timer(&icpu->cpu_timer,  jiffies +
+			usecs_to_jiffies(tunables->sampling_rate));
+	} else {
+		icpu->cpu_timer.expires =  jiffies +
+			usecs_to_jiffies(tunables->sampling_rate);
+		add_timer_on(&icpu->cpu_timer, cpu);
+	}
+}
+#endif
 
 static void slack_timer_resched(struct interactive_cpu *icpu, int cpu,
 				bool modify)
@@ -349,9 +371,7 @@ static u64 update_load(struct interactive_cpu *icpu, int cpu)
 		active_time = 0;
 	else
 		active_time = delta_time - delta_idle;
-
 	icpu->cputime_speedadj += active_time * icpu->ipolicy->policy->cur;
-
 	icpu->time_in_idle = now_idle;
 	icpu->time_in_idle_timestamp = now;
 
@@ -368,10 +388,10 @@ static void eval_target_freq(struct interactive_cpu *icpu)
 	unsigned int new_freq, loadadjfreq, index, delta_time;
 	unsigned long flags;
 	int cpu_load;
-	int cpu = smp_processor_id();
+	int cpu = icpu->cpu;
 
 	spin_lock_irqsave(&icpu->load_lock, flags);
-	now = update_load(icpu, smp_processor_id());
+	now = update_load(icpu, cpu);
 	delta_time = (unsigned int)(now - icpu->cputime_speedadj_timestamp);
 	cputime_speedadj = icpu->cputime_speedadj;
 	spin_unlock_irqrestore(&icpu->load_lock, flags);
@@ -444,7 +464,7 @@ static void eval_target_freq(struct interactive_cpu *icpu)
 	}
 
 	if (icpu->target_freq == new_freq &&
-	    icpu->target_freq <= policy->cur) {
+	    icpu->target_freq == policy->cur) {
 		trace_cpufreq_interactive_already(cpu, cpu_load,
 			icpu->target_freq, policy->cur, new_freq);
 		goto exit;
@@ -470,27 +490,7 @@ exit:
 static void cpufreq_interactive_update(struct interactive_cpu *icpu)
 {
 	eval_target_freq(icpu);
-	slack_timer_resched(icpu, smp_processor_id(), true);
-}
-
-static void cpufreq_interactive_idle_end(void)
-{
-	struct interactive_cpu *icpu = &per_cpu(interactive_cpu,
-						smp_processor_id());
-
-	if (!down_read_trylock(&icpu->enable_sem))
-		return;
-
-	if (icpu->ipolicy) {
-		/*
-		 * We haven't sampled load for more than sampling_rate time, do
-		 * it right now.
-		 */
-		if (time_after_eq(jiffies, icpu->next_sample_jiffies))
-			cpufreq_interactive_update(icpu);
-	}
-
-	up_read(&icpu->enable_sem);
+	slack_timer_resched(icpu, icpu->cpu, true);
 }
 
 static void cpufreq_interactive_get_policy_info(struct cpufreq_policy *policy,
@@ -1013,19 +1013,6 @@ static struct kobj_type interactive_tunables_ktype = {
 	.sysfs_ops = &governor_sysfs_ops,
 };
 
-static int cpufreq_interactive_idle_notifier(struct notifier_block *nb,
-					     unsigned long val, void *data)
-{
-	if (val == IDLE_END)
-		cpufreq_interactive_idle_end();
-
-	return 0;
-}
-
-static struct notifier_block cpufreq_interactive_idle_nb = {
-	.notifier_call = cpufreq_interactive_idle_notifier,
-};
-
 /* Interactive Governor callbacks */
 struct interactive_governor {
 	struct cpufreq_governor gov;
@@ -1036,10 +1023,33 @@ static struct interactive_governor interactive_gov;
 
 #define CPU_FREQ_GOV_INTERACTIVE	(&interactive_gov.gov)
 
+#ifdef CONFIG_INTERACTIVE_TIMER_MODE
+static void cpufreq_interactive_timer(unsigned long data)
+{
+	struct interactive_cpu *icpu = &per_cpu(interactive_cpu, data);
+
+	if (unlikely(!down_read_trylock(&icpu->enable_sem))) {
+		if (!timer_pending(&icpu->cpu_timer))
+			interactive_timer_resched(icpu, (int)data, true);
+		return;
+	}
+
+	if (!icpu->work_in_progress) {
+		icpu->work_in_progress = true;
+		cpufreq_interactive_update(icpu);
+		icpu->work_in_progress = false;
+	}
+	if (!timer_pending(&icpu->cpu_timer))
+		interactive_timer_resched(icpu, (int)data, true);
+	up_read(&icpu->enable_sem);
+}
+#else
 static void irq_work(struct irq_work *irq_work)
 {
 	struct interactive_cpu *icpu = container_of(irq_work, struct
 						    interactive_cpu, irq_work);
+	if (!icpu || !(icpu->ipolicy))
+		return;
 
 	cpufreq_interactive_update(icpu);
 	icpu->work_in_progress = false;
@@ -1067,12 +1077,17 @@ static void update_util_handler(struct update_util_data *data, u64 time,
 	if ((s64)delta_ns < tunables->sampling_rate * NSEC_PER_USEC)
 		return;
 
-	icpu->last_sample_time = time;
-	icpu->next_sample_jiffies = usecs_to_jiffies(tunables->sampling_rate) +
-				    jiffies;
+	if (unlikely(!down_read_trylock(&icpu->enable_sem)))
+		return;
+	if (likely(icpu->ipolicy)) {
+		icpu->last_sample_time = time;
+		icpu->next_sample_jiffies = usecs_to_jiffies(tunables->sampling_rate) +
+					    jiffies;
 
-	icpu->work_in_progress = true;
-	irq_work_queue(&icpu->irq_work);
+		icpu->work_in_progress = true;
+		irq_work_queue(&icpu->irq_work);
+	}
+	up_read(&icpu->enable_sem);
 }
 
 static void gov_set_update_util(struct interactive_policy *ipolicy)
@@ -1107,6 +1122,7 @@ static void icpu_cancel_work(struct interactive_cpu *icpu)
 	icpu->work_in_progress = false;
 	del_timer_sync(&icpu->slack_timer);
 }
+#endif
 
 static struct interactive_policy *
 interactive_policy_alloc(struct cpufreq_policy *policy)
@@ -1216,7 +1232,6 @@ int cpufreq_interactive_init(struct cpufreq_policy *policy)
 
 	/* One time initialization for governor */
 	if (!interactive_gov.usage_count++) {
-		idle_notifier_register(&cpufreq_interactive_idle_nb);
 		cpufreq_register_notifier(&cpufreq_notifier_block,
 					  CPUFREQ_TRANSITION_NOTIFIER);
 	}
@@ -1250,7 +1265,6 @@ void cpufreq_interactive_exit(struct cpufreq_policy *policy)
 	if (!--interactive_gov.usage_count) {
 		cpufreq_unregister_notifier(&cpufreq_notifier_block,
 					    CPUFREQ_TRANSITION_NOTIFIER);
-		idle_notifier_unregister(&cpufreq_interactive_idle_nb);
 	}
 
 	count = gov_attr_set_put(&tunables->attr_set, &ipolicy->tunables_hook);
@@ -1282,28 +1296,41 @@ int cpufreq_interactive_start(struct cpufreq_policy *policy)
 		down_write(&icpu->enable_sem);
 		icpu->ipolicy = ipolicy;
 		up_write(&icpu->enable_sem);
-
+#ifdef CONFIG_INTERACTIVE_TIMER_MODE
+		del_timer_sync(&icpu->cpu_timer);
+		del_timer_sync(&icpu->slack_timer);
+		interactive_timer_resched(icpu, cpu, false);
+#endif
 		slack_timer_resched(icpu, cpu, false);
 	}
-
+#ifndef CONFIG_INTERACTIVE_TIMER_MODE
 	gov_set_update_util(ipolicy);
+#endif
 	return 0;
 }
 
 void cpufreq_interactive_stop(struct cpufreq_policy *policy)
 {
+#ifndef CONFIG_INTERACTIVE_TIMER_MODE
 	struct interactive_policy *ipolicy = policy->governor_data;
+#endif
 	struct interactive_cpu *icpu;
 	unsigned int cpu;
 
+#ifndef CONFIG_INTERACTIVE_TIMER_MODE
 	gov_clear_update_util(ipolicy->policy);
-
+#endif
 	for_each_cpu(cpu, policy->cpus) {
 		icpu = &per_cpu(interactive_cpu, cpu);
 
-		icpu_cancel_work(icpu);
-
 		down_write(&icpu->enable_sem);
+#ifndef CONFIG_INTERACTIVE_TIMER_MODE
+		icpu_cancel_work(icpu);
+#else
+		icpu->work_in_progress = false;
+		del_timer_sync(&icpu->cpu_timer);
+		del_timer_sync(&icpu->slack_timer);
+#endif
 		icpu->ipolicy = NULL;
 		up_write(&icpu->enable_sem);
 	}
@@ -1334,7 +1361,6 @@ void cpufreq_interactive_limits(struct cpufreq_policy *policy)
 static struct interactive_governor interactive_gov = {
 	.gov = {
 		.name			= "interactive",
-		.max_transition_latency	= TRANSITION_LATENCY_LIMIT,
 		.owner			= THIS_MODULE,
 		.init			= cpufreq_interactive_init,
 		.exit			= cpufreq_interactive_exit,
@@ -1344,7 +1370,7 @@ static struct interactive_governor interactive_gov = {
 	}
 };
 
-static void cpufreq_interactive_nop_timer(unsigned long data)
+static void cpufreq_interactive_slack_timer(unsigned long data)
 {
 	/*
 	 * The purpose of slack-timer is to wake up the CPU from IDLE, in order
@@ -1353,6 +1379,19 @@ static void cpufreq_interactive_nop_timer(unsigned long data)
 	 * This is important for platforms where CPU with higher frequencies
 	 * consume higher power even at IDLE.
 	 */
+#ifndef CONFIG_INTERACTIVE_TIMER_MODE
+	struct interactive_cpu *icpu = &per_cpu(interactive_cpu, smp_processor_id());
+
+	if (unlikely(!down_read_trylock(&icpu->enable_sem)))
+		return;
+	if (likely(icpu->ipolicy)) {
+		if (!icpu->work_in_progress) {
+			icpu->work_in_progress = true;
+			irq_work_queue(&icpu->irq_work);
+		}
+	}
+	up_read(&icpu->enable_sem);
+#endif
 }
 
 static int __init cpufreq_interactive_gov_init(void)
@@ -1363,15 +1402,21 @@ static int __init cpufreq_interactive_gov_init(void)
 
 	for_each_possible_cpu(cpu) {
 		icpu = &per_cpu(interactive_cpu, cpu);
-
+		icpu->cpu = cpu;
+#ifdef CONFIG_INTERACTIVE_TIMER_MODE
+		init_timer_pinned_deferrable(&icpu->cpu_timer);
+		icpu->cpu_timer.function = cpufreq_interactive_timer;
+		icpu->cpu_timer.data = cpu;
+#else
 		init_irq_work(&icpu->irq_work, irq_work);
+#endif
 		spin_lock_init(&icpu->load_lock);
 		spin_lock_init(&icpu->target_freq_lock);
 		init_rwsem(&icpu->enable_sem);
 
 		/* Initialize per-cpu slack-timer */
 		init_timer_pinned(&icpu->slack_timer);
-		icpu->slack_timer.function = cpufreq_interactive_nop_timer;
+		icpu->slack_timer.function = cpufreq_interactive_slack_timer;
 	}
 
 	spin_lock_init(&speedchange_cpumask_lock);

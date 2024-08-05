@@ -29,6 +29,9 @@
 #include <linux/completion.h>
 #include <linux/cpufreq.h>
 #include <linux/irq_work.h>
+#ifdef CONFIG_TRUSTY
+#include <linux/irqdomain.h>
+#endif
 
 #include <linux/atomic.h>
 #include <asm/bugs.h>
@@ -51,6 +54,8 @@
 #include <asm/virt.h>
 #include <asm/mach/arch.h>
 #include <asm/mpu.h>
+#include <asm/system_misc.h>
+#include <linux/soc/sprd/sprd_sysdump.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/ipi.h>
@@ -76,13 +81,25 @@ enum ipi_msg_type {
 	IPI_CPU_STOP,
 	IPI_IRQ_WORK,
 	IPI_COMPLETION,
+	/*
+	 * CPU_BACKTRACE is special and not included in NR_IPI
+	 * or tracable with trace_ipi_*
+	 */
 	IPI_CPU_BACKTRACE,
 	/*
 	 * SGI8-15 can be reserved by secure firmware, and thus may
 	 * not be usable by the kernel. Please keep the above limited
 	 * to at most 8 entries.
 	 */
+#ifdef CONFIG_TRUSTY
+	IPI_CUSTOM_FIRST,
+	IPI_CUSTOM_LAST = 15,
+#endif
 };
+
+#ifdef CONFIG_TRUSTY
+struct irq_domain *ipi_custom_irq_domain;
+#endif
 
 static DECLARE_COMPLETION(cpu_running);
 
@@ -527,18 +544,6 @@ static void smp_cross_call(const struct cpumask *target, unsigned int ipinr)
 	__smp_cross_call(target, ipinr);
 }
 
-DEFINE_PER_CPU(bool, pending_ipi);
-static void smp_cross_call_common(const struct cpumask *cpumask,
-						unsigned int func)
-{
-	unsigned int cpu;
-
-	for_each_cpu(cpu, cpumask)
-		per_cpu(pending_ipi, cpu) = true;
-
-	smp_cross_call(cpumask, func);
-}
-
 void show_ipi_list(struct seq_file *p, int prec)
 {
 	unsigned int cpu, i;
@@ -567,32 +572,31 @@ u64 smp_irq_stat_cpu(unsigned int cpu)
 
 void arch_send_call_function_ipi_mask(const struct cpumask *mask)
 {
-	smp_cross_call_common(mask, IPI_CALL_FUNC);
+	smp_cross_call(mask, IPI_CALL_FUNC);
 }
 
 void arch_send_wakeup_ipi_mask(const struct cpumask *mask)
 {
-	smp_cross_call_common(mask, IPI_WAKEUP);
+	smp_cross_call(mask, IPI_WAKEUP);
 }
 
 void arch_send_call_function_single_ipi(int cpu)
 {
-	smp_cross_call_common(cpumask_of(cpu), IPI_CALL_FUNC);
+	smp_cross_call(cpumask_of(cpu), IPI_CALL_FUNC);
 }
 
 #ifdef CONFIG_IRQ_WORK
 void arch_irq_work_raise(void)
 {
 	if (arch_irq_work_has_interrupt())
-		smp_cross_call_common(cpumask_of(smp_processor_id()),
-				IPI_IRQ_WORK);
+		smp_cross_call(cpumask_of(smp_processor_id()), IPI_IRQ_WORK);
 }
 #endif
 
 #ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
 void tick_broadcast(const struct cpumask *mask)
 {
-	smp_cross_call_common(mask, IPI_TIMER);
+	smp_cross_call(mask, IPI_TIMER);
 }
 #endif
 
@@ -603,13 +607,6 @@ static DEFINE_RAW_SPINLOCK(stop_lock);
  */
 static void ipi_cpu_stop(unsigned int cpu)
 {
-	if (system_state <= SYSTEM_RUNNING) {
-		raw_spin_lock(&stop_lock);
-		pr_crit("CPU%u: stopping\n", cpu);
-		dump_stack();
-		raw_spin_unlock(&stop_lock);
-	}
-
 	set_cpu_online(cpu, false);
 
 	local_fiq_disable();
@@ -634,6 +631,9 @@ static void ipi_complete(unsigned int cpu)
 	complete(per_cpu(cpu_completion, cpu));
 }
 
+#ifdef CONFIG_SPRD_SYSDUMP
+	extern void sysdump_ipi(struct pt_regs *regs);
+#endif
 /*
  * Main handler for inter-processor interrupts
  */
@@ -676,6 +676,20 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 
 	case IPI_CPU_STOP:
 		irq_enter();
+#ifdef CONFIG_SPRD_SYSDUMP
+		if (system_state <= SYSTEM_RUNNING) {
+			struct pt_regs pregs;
+
+			raw_spin_lock(&stop_lock);
+			pr_crit("CPU%u: stopping\n", cpu);
+			dump_stack();
+			memset(&pregs, 0x00, sizeof(pregs));
+			get_pt_regs(&pregs);
+			sprd_dump_stack_reg(cpu, &pregs);
+			raw_spin_unlock(&stop_lock);
+		}
+		sysdump_ipi(regs);
+#endif
 		ipi_cpu_stop(cpu);
 		irq_exit();
 		break;
@@ -703,21 +717,109 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 		break;
 
 	default:
-		pr_crit("CPU%u: Unknown IPI message 0x%x\n",
-		        cpu, ipinr);
+#ifdef CONFIG_TRUSTY
+		if (ipi_custom_irq_domain &&
+		    ipinr >= IPI_CUSTOM_FIRST && ipinr <= IPI_CUSTOM_LAST)
+			handle_domain_irq(ipi_custom_irq_domain, ipinr, regs);
+		else
+			pr_crit("CPU%u: Unknown IPI message 0x%x\n",
+				cpu, ipinr);
+#else
+		pr_crit("CPU%u: Unknown IPI message 0x%x\n", cpu, ipinr);
+
+#endif
 		break;
 	}
 
 	if ((unsigned)ipinr < NR_IPI)
 		trace_ipi_exit_rcuidle(ipi_types[ipinr]);
-
-	per_cpu(pending_ipi, cpu) = false;
 	set_irq_regs(old_regs);
 }
 
+#ifdef CONFIG_TRUSTY
+static void custom_ipi_enable(struct irq_data *data)
+{
+	/*
+	 * Always trigger a new ipi on enable. This only works for clients
+	 * that then clear the ipi before unmasking interrupts.
+	 */
+	smp_cross_call(cpumask_of(smp_processor_id()), data->hwirq);
+}
+
+static void custom_ipi_disable(struct irq_data *data)
+{
+}
+
+static struct irq_chip custom_ipi_chip = {
+	.name			= "CustomIPI",
+	.irq_enable		= custom_ipi_enable,
+	.irq_disable		= custom_ipi_disable,
+};
+
+static void handle_custom_ipi_irq(struct irq_desc *desc)
+{
+	if (!desc->action) {
+		pr_crit("CPU%u: Unknown IPI message 0x%x, no custom handler\n",
+			smp_processor_id(), irq_desc_get_irq(desc));
+		return;
+	}
+
+	if (!cpumask_test_cpu(smp_processor_id(), desc->percpu_enabled))
+		return; /* IPIs may not be maskable in hardware */
+
+	handle_percpu_devid_irq(desc);
+}
+
+static int custom_ipi_domain_map(struct irq_domain *d, unsigned int irq,
+				 irq_hw_number_t hw)
+{
+	if (hw < IPI_CUSTOM_FIRST || hw > IPI_CUSTOM_LAST) {
+		pr_err("hwirq-%u is not in supported range for CustomIPI IRQ domain\n",
+		       (uint)hw);
+		return -EINVAL;
+	}
+
+	irq_set_percpu_devid(irq);
+	irq_set_chip_and_handler(irq, &custom_ipi_chip, handle_custom_ipi_irq);
+	irq_set_status_flags(irq, IRQ_NOAUTOEN);
+
+	return 0;
+}
+
+static const struct irq_domain_ops custom_ipi_domain_ops = {
+	.map = custom_ipi_domain_map,
+};
+
+static int __init smp_custom_ipi_init(void)
+{
+	struct device_node *np;
+
+	np = of_find_compatible_node(NULL, NULL, "android,CustomIPI");
+	if (np) {
+		/*
+		 * Register linear irq doman to cover the whole IPI range
+		 * even though we are only using part of it. Proper IRQ
+		 * range check will be done by an implementation of mapping
+		 * routine.
+		 */
+		pr_info("Initilizing CustomIPI irq domain\n");
+		ipi_custom_irq_domain =
+			irq_domain_add_linear(np,
+					      IPI_CUSTOM_LAST + 1,
+					      &custom_ipi_domain_ops,
+					      NULL);
+		WARN_ON(!ipi_custom_irq_domain);
+		return 0;
+	}
+
+	return 0;
+}
+core_initcall(smp_custom_ipi_init);
+#endif
+
 void smp_send_reschedule(int cpu)
 {
-	smp_cross_call_common(cpumask_of(cpu), IPI_RESCHEDULE);
+	smp_cross_call(cpumask_of(cpu), IPI_RESCHEDULE);
 }
 
 void smp_send_stop(void)
@@ -728,7 +830,7 @@ void smp_send_stop(void)
 	cpumask_copy(&mask, cpu_online_mask);
 	cpumask_clear_cpu(smp_processor_id(), &mask);
 	if (!cpumask_empty(&mask))
-		smp_cross_call_common(&mask, IPI_CPU_STOP);
+		smp_cross_call(&mask, IPI_CPU_STOP);
 
 	/* Wait up to one second for other CPUs to stop */
 	timeout = USEC_PER_SEC;
@@ -816,16 +918,7 @@ core_initcall(register_cpufreq_notifier);
 
 static void raise_nmi(cpumask_t *mask)
 {
-	/*
-	 * Generate the backtrace directly if we are running in a calling
-	 * context that is not preemptible by the backtrace IPI. Note
-	 * that nmi_cpu_backtrace() automatically removes the current cpu
-	 * from mask.
-	 */
-	if (cpumask_test_cpu(smp_processor_id(), mask) && irqs_disabled())
-		nmi_cpu_backtrace(NULL);
-
-	smp_cross_call_common(mask, IPI_CPU_BACKTRACE);
+	__smp_cross_call(mask, IPI_CPU_BACKTRACE);
 }
 
 void arch_trigger_cpumask_backtrace(const cpumask_t *mask, bool exclude_self)

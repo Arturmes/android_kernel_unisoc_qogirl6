@@ -16,7 +16,6 @@
  *                    Fabio Checconi <fchecconi@gmail.com>
  */
 #include "sched.h"
-#include "walt.h"
 
 #include <linux/slab.h>
 #include <uapi/linux/sched/types.h>
@@ -1117,6 +1116,7 @@ static void update_curr_dl(struct rq *rq)
 	struct task_struct *curr = rq->curr;
 	struct sched_dl_entity *dl_se = &curr->dl;
 	u64 delta_exec;
+	int cpu = cpu_of(rq);
 
 	if (!dl_task(curr) || !on_dl_rq(dl_se))
 		return;
@@ -1143,12 +1143,16 @@ static void update_curr_dl(struct rq *rq)
 		      max(curr->se.statistics.exec_max, delta_exec));
 
 	curr->se.sum_exec_runtime += delta_exec;
+
+	if (cpumask_test_cpu(cpu, &min_cap_cpu_mask))
+		curr->se.s_sum_exec_runtime += delta_exec;
+	else
+		curr->se.b_sum_exec_runtime += delta_exec;
+
 	account_group_exec_runtime(curr, delta_exec);
 
 	curr->se.exec_start = rq_clock_task(rq);
 	cpuacct_charge(curr, delta_exec);
-
-	sched_rt_avg_update(rq, delta_exec);
 
 	if (unlikely(dl_se->flags & SCHED_FLAG_RECLAIM))
 		delta_exec = grub_reclaim(delta_exec, rq, &curr->dl);
@@ -2348,7 +2352,7 @@ const struct sched_class dl_sched_class = {
 
 	.update_curr		= update_curr_dl,
 #ifdef CONFIG_SCHED_WALT
-	.fixup_walt_sched_stats	= fixup_walt_sched_stats_common,
+	.fixup_cumulative_runnable_avg = walt_fixup_cumulative_runnable_avg,
 #endif
 };
 
@@ -2358,7 +2362,7 @@ int sched_dl_global_validate(void)
 	u64 period = global_rt_period();
 	u64 new_bw = to_ratio(period, runtime);
 	struct dl_bw *dl_b;
-	int cpu, cpus, ret = 0;
+	int cpu, ret = 0;
 	unsigned long flags;
 
 	/*
@@ -2373,10 +2377,9 @@ int sched_dl_global_validate(void)
 	for_each_possible_cpu(cpu) {
 		rcu_read_lock_sched();
 		dl_b = dl_bw_of(cpu);
-		cpus = dl_bw_cpus(cpu);
 
 		raw_spin_lock_irqsave(&dl_b->lock, flags);
-		if (new_bw * cpus < dl_b->total_bw)
+		if (new_bw < dl_b->total_bw)
 			ret = -EBUSY;
 		raw_spin_unlock_irqrestore(&dl_b->lock, flags);
 

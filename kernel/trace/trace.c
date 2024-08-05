@@ -42,7 +42,6 @@
 #include <linux/fs.h>
 #include <linux/trace.h>
 #include <linux/sched/rt.h>
-#include <linux/coresight-stm.h>
 
 #include "trace.h"
 #include "trace_output.h"
@@ -1171,8 +1170,48 @@ static struct {
 	{ ktime_get_mono_fast_ns,	"mono",		1 },
 	{ ktime_get_raw_fast_ns,	"mono_raw",	1 },
 	{ ktime_get_boot_fast_ns,	"boot",		1 },
+	{ ktime_get_real_fast_ns,	"real",		1 },
 	ARCH_TRACE_CLOCKS
 };
+
+static int trace_clock_intf __initdata = CONFIG_PRINTK_TIME_TYPE;
+
+enum trace_clock_sources {
+	TRACE_PRINTK_TIME_DISABLED = 0,
+	TRACE_PRINTK_TIME_LOCAL = 1,
+	TRACE_PRINTK_TIME_BOOT = 2,
+	TRACE_PRINTK_TIME_MONO = 3,
+	TRACE_PRINTK_TIME_REAL = 4,
+};
+
+static char trace_printk_get_ts[MAX_TRACER_SIZE] __initdata;
+
+static __init void
+trace_printk_set_ts_source(enum trace_clock_sources ts_source)
+{
+	switch (ts_source) {
+	case TRACE_PRINTK_TIME_LOCAL:
+		strcpy(trace_printk_get_ts, "local");
+		break;
+	case TRACE_PRINTK_TIME_BOOT:
+		strcpy(trace_printk_get_ts, "boot");
+		break;
+	case TRACE_PRINTK_TIME_MONO:
+		strcpy(trace_printk_get_ts, "mono");
+		break;
+	case TRACE_PRINTK_TIME_REAL:
+		strcpy(trace_printk_get_ts, "real");
+		break;
+	case TRACE_PRINTK_TIME_DISABLED:
+		/*
+		 * The timestamp is always stored into the log buffer.
+		 * Keep the current one.
+		 */
+		break;
+	default:
+		break;
+	}
+}
 
 /*
  * trace_parser_get_init - gets the buffer for trace parser
@@ -2375,15 +2414,14 @@ int tracepoint_printk_sysctl(struct ctl_table *table, int write,
 	return ret;
 }
 
-void trace_event_buffer_commit(struct trace_event_buffer *fbuffer,
-			       unsigned long len)
+void trace_event_buffer_commit(struct trace_event_buffer *fbuffer)
 {
 	if (static_key_false(&tracepoint_printk_key.key))
 		output_printk(fbuffer);
 
 	event_trigger_unlock_commit(fbuffer->trace_file, fbuffer->buffer,
 				    fbuffer->event, fbuffer->entry,
-				    fbuffer->flags, fbuffer->pc, len);
+				    fbuffer->flags, fbuffer->pc);
 }
 EXPORT_SYMBOL_GPL(trace_event_buffer_commit);
 
@@ -2406,7 +2444,7 @@ void trace_buffer_unlock_commit_regs(struct trace_array *tr,
 	 * two. They are that meaningful.
 	 */
 	ftrace_trace_stack(tr, buffer, flags, regs ? 0 : 4, pc, regs);
-	ftrace_trace_userstack(tr, buffer, flags, pc);
+	ftrace_trace_userstack(buffer, flags, pc);
 }
 
 /*
@@ -2736,15 +2774,14 @@ void trace_dump_stack(int skip)
 static DEFINE_PER_CPU(int, user_stack_count);
 
 void
-ftrace_trace_userstack(struct trace_array *tr,
-		       struct ring_buffer *buffer, unsigned long flags, int pc)
+ftrace_trace_userstack(struct ring_buffer *buffer, unsigned long flags, int pc)
 {
 	struct trace_event_call *call = &event_user_stack;
 	struct ring_buffer_event *event;
 	struct userstack_entry *entry;
 	struct stack_trace trace;
 
-	if (!(tr->trace_flags & TRACE_ITER_USERSTACKTRACE))
+	if (!(global_trace.trace_flags & TRACE_ITER_USERSTACKTRACE))
 		return;
 
 	/*
@@ -2820,7 +2857,7 @@ static char *get_trace_buf(void)
 
 	/* Interrupts must see nesting incremented before we use the buffer */
 	barrier();
-	return &buffer->buffer[buffer->nesting - 1][0];
+	return &buffer->buffer[buffer->nesting][0];
 }
 
 static void put_trace_buf(void)
@@ -2951,9 +2988,6 @@ int trace_vbprintk(unsigned long ip, const char *fmt, va_list args)
 
 	memcpy(entry->buf, tbuffer, sizeof(u32) * len);
 	if (!call_filter_check_discard(call, entry, buffer, event)) {
-		len = vscnprintf(tbuffer, TRACE_BUF_SIZE, fmt, args);
-		stm_log(OST_ENTITY_TRACE_PRINTK, tbuffer, len+1);
-
 		__buffer_unlock_commit(buffer, event);
 		ftrace_trace_stack(tr, buffer, flags, 6, pc, NULL);
 	}
@@ -3010,7 +3044,6 @@ __trace_array_vprintk(struct ring_buffer *buffer,
 
 	memcpy(&entry->buf, tbuffer, len + 1);
 	if (!call_filter_check_discard(call, entry, buffer, event)) {
-		stm_log(OST_ENTITY_TRACE_PRINTK, entry->buf, len + 1);
 		__buffer_unlock_commit(buffer, event);
 		ftrace_trace_stack(&global_trace, buffer, flags, 6, pc, NULL);
 	}
@@ -3041,9 +3074,6 @@ int trace_array_printk(struct trace_array *tr,
 
 	if (!(global_trace.trace_flags & TRACE_ITER_PRINTK))
 		return 0;
-
-	if (!tr)
-		return -ENOENT;
 
 	va_start(ap, fmt);
 	ret = trace_array_vprintk(tr, ip, fmt, ap);
@@ -4403,7 +4433,7 @@ int set_tracer_flag(struct trace_array *tr, unsigned int mask, int enabled)
 
 	if (mask == TRACE_ITER_RECORD_TGID) {
 		if (!tgid_map)
-			tgid_map = kzalloc((PID_MAX_DEFAULT + 1) * sizeof(*tgid_map),
+			tgid_map = kvzalloc((PID_MAX_DEFAULT + 1) * sizeof(*tgid_map),
 					   GFP_KERNEL);
 		if (!tgid_map) {
 			tr->trace_flags &= ~TRACE_ITER_RECORD_TGID;
@@ -6115,7 +6145,6 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 {
 	struct trace_array *tr = filp->private_data;
 	struct ring_buffer_event *event;
-	struct trace_entry *trace_entry;
 	struct ring_buffer *buffer;
 	struct print_entry *entry;
 	unsigned long irq_flags;
@@ -6153,8 +6182,7 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 		return -EBADF;
 
 	entry = ring_buffer_event_data(event);
-	trace_entry = (struct trace_entry *)entry;
-	entry->ip = trace_entry->pid;
+	entry->ip = _THIS_IP_;
 
 	len = __copy_from_user_inatomic(&entry->buf, ubuf, cnt);
 	if (len) {
@@ -6168,12 +6196,9 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 	if (entry->buf[cnt - 1] != '\n') {
 		entry->buf[cnt] = '\n';
 		entry->buf[cnt + 1] = '\0';
-		stm_log(OST_ENTITY_TRACE_MARKER, entry, sizeof(*entry)+cnt + 2);
-	} else {
+	} else
 		entry->buf[cnt] = '\0';
-		stm_log(OST_ENTITY_TRACE_MARKER, entry, sizeof(*entry)+cnt + 1);
-	}
-	entry->ip = _THIS_IP_;
+
 	__buffer_unlock_commit(buffer, event);
 
 	if (written > 0)
@@ -8358,7 +8383,7 @@ __init static int tracer_alloc_buffers(void)
 		goto out_free_buffer_mask;
 
 	/* Only allocate trace_printk buffers if a trace_printk exists */
-	if (&__stop___trace_bprintk_fmt != &__start___trace_bprintk_fmt)
+	if (__stop___trace_bprintk_fmt != __start___trace_bprintk_fmt)
 		/* Must be called before global_trace.buffer is allocated */
 		trace_printk_init_buffers();
 
@@ -8402,6 +8427,16 @@ __init static int tracer_alloc_buffers(void)
 
 	if (global_trace.buffer_disabled)
 		tracing_off();
+
+	/*
+	 * Set the default trace_printk timestamp
+	 * according CONFIG_PRINTK_TIME_TYPE
+	 */
+	trace_printk_set_ts_source(trace_clock_intf);
+
+	/* Using parameters in command line if exist */
+	if (!trace_boot_clock)
+		trace_boot_clock = trace_printk_get_ts;
 
 	if (trace_boot_clock) {
 		ret = tracing_set_clock(&global_trace, trace_boot_clock);

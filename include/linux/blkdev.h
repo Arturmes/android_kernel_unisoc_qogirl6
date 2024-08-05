@@ -43,9 +43,14 @@ struct pr_ops;
 struct rq_wb;
 struct blk_queue_stats;
 struct blk_stat_callback;
+struct keyslot_manager;
 
 #define BLKDEV_MIN_RQ	4
-#define BLKDEV_MAX_RQ	128	/* Default maximum */
+#ifdef CONFIG_LARGE_DIRTY_BUFFER
+#define BLKDEV_MAX_RQ	256
+#else
+#define BLKDEV_MAX_RQ  128     /* Default maximum */
+#endif
 
 /* Must be consisitent with blk_mq_poll_stats_bkt() */
 #define BLK_MQ_POLL_STATS_BKTS 16
@@ -154,7 +159,6 @@ struct request {
 	unsigned int __data_len;	/* total data len */
 	int tag;
 	sector_t __sector;		/* sector cursor */
-	u64 __dun;			/* dun for UFS */
 
 	struct bio *bio;
 	struct bio *biotail;
@@ -240,9 +244,6 @@ struct request {
 
 	/* for bidi */
 	struct request *next_rq;
-
-	ktime_t			lat_hist_io_start;
-	int			lat_hist_enabled;
 };
 
 static inline bool blk_op_is_scsi(unsigned int op)
@@ -538,6 +539,8 @@ struct request_queue {
 
 	unsigned int		nr_sorted;
 	unsigned int		in_flight[2];
+	unsigned long long	in_flight_time;
+	ktime_t			in_flight_stamp;
 
 	/*
 	 * Number of active block driver functions for which blk_drain_queue()
@@ -545,6 +548,11 @@ struct request_queue {
 	 * queue_lock internally, e.g. scsi_request_fn().
 	 */
 	unsigned int		request_fn_active;
+
+#ifdef CONFIG_BLK_INLINE_ENCRYPTION
+	/* Inline crypto capabilities */
+	struct keyslot_manager *ksm;
+#endif
 
 	unsigned int		rq_timeout;
 	int			poll_nsec;
@@ -579,6 +587,7 @@ struct request_queue {
 	 * for flush operations
 	 */
 	struct blk_flush_queue	*fq;
+	unsigned long		flush_ios;
 
 	struct list_head	requeue_list;
 	spinlock_t		requeue_lock;
@@ -653,7 +662,6 @@ struct request_queue {
 #define QUEUE_FLAG_REGISTERED  26	/* queue has been registered to a disk */
 #define QUEUE_FLAG_SCSI_PASSTHROUGH 27	/* queue supports SCSI commands */
 #define QUEUE_FLAG_QUIESCED    28	/* queue has been quiesced */
-#define QUEUE_FLAG_INLINECRYPT 29	/* inline encryption support */
 
 #define QUEUE_FLAG_DEFAULT	((1 << QUEUE_FLAG_IO_STAT) |		\
 				 (1 << QUEUE_FLAG_STACKABLE)	|	\
@@ -753,8 +761,6 @@ static inline void queue_flag_clear(unsigned int flag, struct request_queue *q)
 #define blk_queue_dax(q)	test_bit(QUEUE_FLAG_DAX, &(q)->queue_flags)
 #define blk_queue_scsi_passthrough(q)	\
 	test_bit(QUEUE_FLAG_SCSI_PASSTHROUGH, &(q)->queue_flags)
-#define blk_queue_inlinecrypt(q) \
-	test_bit(QUEUE_FLAG_INLINECRYPT, &(q)->queue_flags)
 
 #define blk_noretry_request(rq) \
 	((rq)->cmd_flags & (REQ_FAILFAST_DEV|REQ_FAILFAST_TRANSPORT| \
@@ -1046,11 +1052,6 @@ static inline struct request_queue *bdev_get_queue(struct block_device *bdev)
 static inline sector_t blk_rq_pos(const struct request *rq)
 {
 	return rq->__sector;
-}
-
-static inline sector_t blk_rq_dun(const struct request *rq)
-{
-	return rq->__dun;
 }
 
 static inline unsigned int blk_rq_bytes(const struct request *rq)
@@ -1425,7 +1426,7 @@ extern int blk_verify_command(unsigned char *cmd, fmode_t has_write_perm);
 enum blk_default_limits {
 	BLK_MAX_SEGMENTS	= 128,
 	BLK_SAFE_MAX_SECTORS	= 255,
-	BLK_DEF_MAX_SECTORS	= 2560,
+	BLK_DEF_MAX_SECTORS	= 1024,
 	BLK_MAX_SEGMENT_SIZE	= 65536,
 	BLK_SEG_BOUNDARY_MASK	= 0xFFFFFFFFUL,
 };
@@ -2005,79 +2006,6 @@ extern int __blkdev_driver_ioctl(struct block_device *, fmode_t, unsigned int,
 extern int bdev_read_page(struct block_device *, sector_t, struct page *);
 extern int bdev_write_page(struct block_device *, sector_t, struct page *,
 						struct writeback_control *);
-
-/*
- * X-axis for IO latency histogram support.
- */
-static const u_int64_t latency_x_axis_us[] = {
-	100,
-	200,
-	300,
-	400,
-	500,
-	600,
-	700,
-	800,
-	900,
-	1000,
-	1200,
-	1400,
-	1600,
-	1800,
-	2000,
-	2500,
-	3000,
-	4000,
-	5000,
-	6000,
-	7000,
-	9000,
-	10000
-};
-
-#define BLK_IO_LAT_HIST_DISABLE         0
-#define BLK_IO_LAT_HIST_ENABLE          1
-#define BLK_IO_LAT_HIST_ZERO            2
-
-struct io_latency_state {
-	u_int64_t	latency_y_axis_read[ARRAY_SIZE(latency_x_axis_us) + 1];
-	u_int64_t	latency_reads_elems;
-	u_int64_t	latency_y_axis_write[ARRAY_SIZE(latency_x_axis_us) + 1];
-	u_int64_t	latency_writes_elems;
-};
-
-static inline void
-blk_update_latency_hist(struct io_latency_state *s,
-			int read,
-			u_int64_t delta_us)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(latency_x_axis_us); i++) {
-		if (delta_us < (u_int64_t)latency_x_axis_us[i]) {
-			if (read)
-				s->latency_y_axis_read[i]++;
-			else
-				s->latency_y_axis_write[i]++;
-			break;
-		}
-	}
-	if (i == ARRAY_SIZE(latency_x_axis_us)) {
-		/* Overflowed the histogram */
-		if (read)
-			s->latency_y_axis_read[i]++;
-		else
-			s->latency_y_axis_write[i]++;
-	}
-	if (read)
-		s->latency_reads_elems++;
-	else
-		s->latency_writes_elems++;
-}
-
-void blk_zero_latency_hist(struct io_latency_state *s);
-ssize_t blk_latency_hist_show(struct io_latency_state *s, char *buf);
-
 #else /* CONFIG_BLOCK */
 
 struct block_device;

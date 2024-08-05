@@ -19,7 +19,6 @@ config ARM
 	select ARCH_USE_BUILTIN_BSWAP
 	select ARCH_USE_CMPXCHG_LOCKREF
 	select ARCH_WANT_IPC_PARSE_VERSION
-	select ARM_PSCI_FW if PM
 	select BUILDTIME_EXTABLE_SORT if MMU
 	select CLONE_BACKWARDS
 	select CPU_PM if (SUSPEND || CPU_IDLE)
@@ -128,7 +127,7 @@ if ARM_DMA_USE_IOMMU
 config ARM_DMA_IOMMU_ALIGNMENT
 	int "Maximum PAGE_SIZE order of alignment for DMA IOMMU buffers"
 	range 4 9
-	default 9
+	default 8
 	help
 	  DMA mapping framework by default aligns all buffers to the smallest
 	  PAGE_SIZE order which is greater than or equal to the requested buffer
@@ -239,9 +238,6 @@ config NEED_RET_TO_USER
 	bool
 
 config ARCH_MTD_XIP
-	bool
-
-config ARCH_WANT_KMAP_ATOMIC_FLUSH
 	bool
 
 config VECTORS_BASE
@@ -553,36 +549,6 @@ config ARCH_PXA
 	help
 	  Support for Intel/Marvell's PXA2xx/PXA3xx processor line.
 
-config ARCH_QCOM
-       bool "Qualcomm MSM (non-multiplatform)"
-       select ARCH_REQUIRE_GPIOLIB
-       select CPU_V7
-       select AUTO_ZRELADDR
-       select HAVE_SMP
-       select CLKDEV_LOOKUP
-       select GENERIC_CLOCKEVENTS
-       select GENERIC_ALLOCATOR
-       select ARM_GIC
-       select ARM_PATCH_PHYS_VIRT
-       select ARM_HAS_SG_CHAIN
-       select ARCH_HAS_OPP
-       select SOC_BUS
-       select MULTI_IRQ_HANDLER
-       select PM_OPP
-       select SPARSE_IRQ
-       select USE_OF
-       select PINCTRL
-       select ARCH_WANT_KMAP_ATOMIC_FLUSH
-       select MFD_CORE
-       select SND_SOC_COMPRESS
-       select SND_HWDEP
-       help
-         Support for Qualcomm MSM/QSD based systems.  This runs on the
-         apps processor of the MSM/QSD and depends on a shared memory
-         interface to the modem processor which runs the baseband
-         stack and controls some vital subsystems
-         (clock and power control, etc).
-
 config ARCH_RPC
 	bool "RiscPC"
 	depends on MMU
@@ -636,9 +602,7 @@ config ARCH_S3C24XX
 	select HAVE_S3C_RTC if RTC_CLASS
 	select MULTI_IRQ_HANDLER
 	select NEED_MACH_IO_H
-	select S3C2410_WATCHDOG
 	select SAMSUNG_ATAGS
-	select WATCHDOG
 	help
 	  Samsung S3C2410, S3C2412, S3C2413, S3C2416, S3C2440, S3C2442, S3C2443
 	  and S3C2450 SoCs based systems, such as the Simtec Electronics BAST
@@ -849,6 +813,26 @@ source "arch/arm/mach-sa1100/Kconfig"
 source "arch/arm/mach-socfpga/Kconfig"
 
 source "arch/arm/mach-spear/Kconfig"
+
+source "arch/arm/mach-sprd/Kconfig"
+
+if ARCH_SPRD
+
+menu "CPU info trans to compiler"
+
+config SPRD_CPU_ARCH
+       string "Architecture info for compiler"
+       help
+         Transfer the architecture info to compiler by "-march" flag.
+
+config SPRD_CPU_TYPE
+       string "CPU type info for compiler"
+       help
+         Transfer the cpu type info to compiler by "-mcpu" flag.
+
+endmenu
+
+endif
 
 source "arch/arm/mach-sti/Kconfig"
 
@@ -1314,6 +1298,12 @@ endmenu
 
 menu "Kernel Features"
 
+config AARCH32_SHOW_AARCH64_CPUINFO
+	bool "Show cpuinfo ARMV8"
+	default y
+	help
+	  This option show cpuinfo ARMV8.
+
 config HAVE_SMP
 	bool
 	help
@@ -1506,7 +1496,7 @@ config ARCH_NR_GPIO
 	int
 	default 2048 if ARCH_SOCFPGA
 	default 1024 if ARCH_BRCMSTB || ARCH_SHMOBILE || ARCH_TEGRA || \
-		ARCH_ZYNQ || ARCH_QCOM
+		ARCH_ZYNQ
 	default 512 if ARCH_EXYNOS || ARCH_KEYSTONE || SOC_OMAP5 || \
 		SOC_DRA7XX || ARCH_S3C24XX || ARCH_S3C64XX || ARCH_S5PV210
 	default 416 if ARCH_SUNXI
@@ -1902,26 +1892,6 @@ config BUILD_ARM_APPENDED_DTB_IMAGE
 	  Enabling this option will cause a concatenated zImage and list of
 	  DTBs to be built by default (instead of a standalone zImage.)
 	  The image will built in arch/arm/boot/zImage-dtb
-choice
-	prompt "Appended DTB Kernel Image name"
-	depends on BUILD_ARM_APPENDED_DTB_IMAGE
-	default ZIMG_DTB
-	help
-	  Enabling this option will cause a specific kernel image Image or
-	  Image.gz to be used for final image creation.
-	  The image will built in arch/arm/boot/IMAGE-NAME-dtb
-
-	config ZIMG_DTB
-		bool "zImage-dtb"
-	config IMG_DTB
-		bool "Image-dtb"
-endchoice
-
-config BUILD_ARM_APPENDED_KERNEL_IMAGE_NAME
-	string
-	depends on BUILD_ARM_APPENDED_DTB_IMAGE
-	default "zImage-dtb" if ZIMG_DTB
-	default "Image-dtb" if IMG_DTB
 
 config BUILD_ARM_APPENDED_DTB_IMAGE_NAMES
 	string "Default dtb names"
@@ -1929,6 +1899,12 @@ config BUILD_ARM_APPENDED_DTB_IMAGE_NAMES
 	help
 	  Space separated list of names of dtbs to append when
 	  building a concatenated zImage-dtb.
+
+config BUILD_ARM_DTC
+	string "dtc to use"
+
+config BUILD_ARM_DTC_FLAGS
+	string "extra dtc flags"
 
 # Compressed boot loader in ROM.  Yes, we really want to ask about
 # TEXT and BSS so we preserve their values in the config files.

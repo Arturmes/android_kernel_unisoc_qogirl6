@@ -279,11 +279,6 @@ struct detailed_timing {
 
 #define DRM_ELD_CEA_SAD(mnl, sad)	(20 + (mnl) + 3 * (sad))
 
-/* HDMI 2.0 */
-#define DRM_EDID_3D_INDEPENDENT_VIEW	(1 << 2)
-#define DRM_EDID_3D_DUAL_VIEW		(1 << 1)
-#define DRM_EDID_3D_OSD_DISPARITY	(1 << 0)
-
 struct edid {
 	u8 header[8];
 	/* Vendor & product info */
@@ -336,6 +331,7 @@ struct cea_sad {
 
 struct drm_encoder;
 struct drm_connector;
+struct drm_connector_state;
 struct drm_display_mode;
 
 void drm_edid_to_eld(struct drm_connector *connector, struct edid *edid);
@@ -367,6 +363,10 @@ drm_hdmi_avi_infoframe_quant_range(struct hdmi_avi_infoframe *frame,
 				   enum hdmi_quantization_range rgb_quant_range,
 				   bool rgb_quant_range_selectable,
 				   bool is_hdmi2_sink);
+
+int
+drm_hdmi_infoframe_set_hdr_metadata(struct hdmi_drm_infoframe *frame,
+				   const struct drm_connector_state *conn_state);
 
 /**
  * drm_eld_mnl - Get ELD monitor name length in bytes.

@@ -65,11 +65,11 @@
  * .data. We don't want to pull in .data..other sections, which Linux
  * has defined. Same for text and bss.
  */
-#ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
+#if defined(CONFIG_LD_DEAD_CODE_DATA_ELIMINATION) || defined(CONFIG_LTO_CLANG)
 #define TEXT_MAIN .text .text.[0-9a-zA-Z_]*
 #define TEXT_CFI_MAIN .text.cfi .text.[0-9a-zA-Z_]*.cfi
-#define DATA_MAIN .data .data.[0-9a-zA-Z_]*
-#define BSS_MAIN .bss .bss.[0-9a-zA-Z_]*
+#define DATA_MAIN .data .data.[0-9a-zA-Z_]* .data..compoundliteral* .data..L*
+#define BSS_MAIN .bss .bss.[0-9a-zA-Z_]* .bss..compoundliteral* .bss..L*
 #else
 #define TEXT_MAIN .text
 #define TEXT_CFI_MAIN .text.cfi
@@ -774,6 +774,13 @@
 		KEEP(*(.security_initcall.init))			\
 		VMLINUX_SYMBOL(__security_initcall_end) = .;
 
+/* Alignment must be consistent with (test_module *) in include/test/test.h */
+#define KUNIT_TEST_MODULES						\
+		. = ALIGN(8);						\
+		__test_modules_start = .;				\
+		KEEP(*(.test_modules))					\
+		__test_modules_end = .;
+
 #ifdef CONFIG_BLK_DEV_INITRD
 #define INIT_RAM_FS							\
 	. = ALIGN(4);							\
@@ -924,6 +931,7 @@
 		CON_INITCALL						\
 		SECURITY_INITCALL					\
 		INIT_RAM_FS						\
+		KUNIT_TEST_MODULES					\
 	}
 
 #define BSS_SECTION(sbss_align, bss_align, stop_align)			\

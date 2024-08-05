@@ -430,10 +430,6 @@
 			embedded devices based on command line input.
 			See Documentation/block/cmdline-partition.txt
 
-	boot_cpus=	[SMP]
-			Rather than attempting to online all possible CPUs at
-			boot time, only online the specified set of CPUs.
-
 	boot_delay=	Milliseconds to delay each printk during boot.
 			Values larger than 10 seconds (10000) are changed to
 			no delay (0).
@@ -556,7 +552,7 @@
 			loops can be debugged more effectively on production
 			systems.
 
-	clearcpuid=BITNUM[,BITNUM...] [X86]
+	clearcpuid=BITNUM [X86]
 			Disable CPUID feature X for the kernel. See
 			arch/x86/include/asm/cpufeatures.h for the valid bit
 			numbers. Note the Linux specific bits are not necessarily
@@ -847,8 +843,6 @@
 
 	dm=		[DM] Allows early creation of a device-mapper device.
 			See Documentation/device-mapper/boot.txt.
-
-	dmasound=	[HW,OSS] Sound subsystem buff
 
 	dma_debug=off	If the kernel is compiled with DMA_API_DEBUG support,
 			this option disables the debugging code at boot.
@@ -1580,6 +1574,15 @@
 			modules and initcalls.
 
 	initrd=		[BOOT] Specify the location of the initial ramdisk
+
+	init_on_alloc=	[MM] Fill newly allocated pages and heap objects with
+			zeroes.
+			Format: 0 | 1
+			Default set by CONFIG_INIT_ON_ALLOC_DEFAULT_ON.
+
+	init_on_free=	[MM] Fill freed pages and heap objects with zeroes.
+			Format: 0 | 1
+			Default set by CONFIG_INIT_ON_FREE_DEFAULT_ON.
 
 	init_pkru=	[x86] Specify the default memory protection keys rights
 			register contents for all processes.  0x55555554 by
@@ -2455,8 +2458,6 @@
 					       mds=off [X86]
 					       tsx_async_abort=off [X86]
 					       kvm.nx_huge_pages=off [X86]
-					       no_entry_flush [PPC]
-					       no_uaccess_flush [PPC]
 
 				Exceptions:
 					       This does not have any effect on
@@ -2760,8 +2761,6 @@
 
 	noefi		Disable EFI runtime services support.
 
-	no_entry_flush  [PPC] Don't flush the L1-D cache when entering the kernel.
-
 	noexec		[IA-64]
 
 	noexec		[X86]
@@ -2810,9 +2809,6 @@
 
 	nospec_store_bypass_disable
 			[HW] Disable all mitigations for the Speculative Store Bypass vulnerability
-
-	no_uaccess_flush
-	                [PPC] Don't flush the L1-D cache after accessing user data.
 
 	noxsave		[BUGS=X86] Disables x86 extended register state save
 			and restore using xsave. The kernel will fallback to
@@ -3417,6 +3413,9 @@
 			Format: <bool>  (1/Y/y=enable, 0/N/n=disable)
 			default: disabled
 
+	printk.cpuid=	Show cpuid infor prefixed to each printk message line
+			Format: <bool>  (1/Y/y=enable, 0/N/n=disable)
+
 	printk.devkmsg={on,off,ratelimit}
 			Control writing to /dev/kmsg.
 			on - unlimited logging to /dev/kmsg from userspace
@@ -3424,8 +3423,10 @@
 			ratelimit - ratelimit the logging
 			Default: ratelimit
 
-	printk.time=	Show timing data prefixed to each printk message line
-			Format: <bool>  (1/Y/y=enable, 0/N/n=disable)
+	printk.time=	Show timestamp prefixed to each printk message line
+			Format: <string>
+				(0/N/n/disable, 1/Y/y/local,
+				 b/boot, m/monotonic, r/realtime (in UTC))
 
 	processor.max_cstate=	[HW,ACPI]
 			Limit processor to maximum C-state
@@ -3447,6 +3448,10 @@
 	prompt_ramdisk=	[RAM] List of RAM disks to prompt for floppy disk
 			before loading.
 			See Documentation/blockdev/ramdisk.txt.
+
+	psi=		[KNL] Enable or disable pressure stall information
+			tracking.
+			Format: <bool>
 
 	psmouse.proto=	[HW,MOUSE] Highest PS2 mouse protocol extension to
 			probe for; one of (bare|imps|exps|lifebook|any).
@@ -4759,7 +4764,6 @@
 					device);
 				j = NO_REPORT_LUNS (don't use report luns
 					command, uas only);
-				k = NO_SAME (do not use WRITE_SAME, uas only)
 				l = NOT_LOCKABLE (don't try to lock and
 					unlock ejectable media, not on uas);
 				m = MAX_SECTORS_64 (don't transfer more
@@ -5038,14 +5042,6 @@
 	xen_nopv	[X86]
 			Disables the PV optimizations forcing the HVM guest to
 			run as generic HVM guest with no PV drivers.
-
-	xen.event_eoi_delay=	[XEN]
-			How long to delay EOI handling in case of event
-			storms (jiffies). Default is 10.
-
-	xen.event_loop_timeout=	[XEN]
-			After which time (jiffies) the event handling loop
-			should start to delay EOI handling. Default is 2.
 
 	xirc2ps_cs=	[NET,PCMCIA]
 			Format:

@@ -1,10 +1,3 @@
-config MTD_NAND_IDS
-	tristate "Include chip ids for known NAND devices."
-	depends on MTD
-	help
-	  Useful for NAND drivers that do not use the NAND subsystem but
-	  still like to take advantage of the known chip information.
-
 config MTD_NAND_ECC
 	tristate
 
@@ -569,5 +562,11 @@ config MTD_NAND_MTK
 	help
 	  Enables support for NAND controller on MTK SoCs.
 	  This controller is found on mt27xx, mt81xx, mt65xx SoCs.
+
+config MTD_NAND_SPRD
+	tristate "Support for NAND controller on SPRD SoC Orca"
+	depends on ARCH_SPRD || COMPILE_TEST
+	help
+	  Enables support for NAND controller on SPRD SoC Orca.
 
 endif # MTD_NAND

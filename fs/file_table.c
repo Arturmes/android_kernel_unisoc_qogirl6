@@ -42,140 +42,85 @@ static struct kmem_cache *filp_cachep __read_mostly;
 
 static struct percpu_counter nr_files __cacheline_aligned_in_smp;
 
-#ifdef CONFIG_FILE_TABLE_DEBUG
-#include <linux/hashtable.h>
-#include <mount.h>
-static DEFINE_MUTEX(global_files_lock);
-static DEFINE_HASHTABLE(global_files_hashtable, 10);
+#if IS_ENABLED(CONFIG_SEC_DEBUG_FPUT_WATCHDOG)
+#include <linux/sched/debug.h>
+#include <linux/sec_debug.h>
 
-struct global_filetable_lookup_key {
-	struct work_struct work;
-	uintptr_t value;
+struct fput_watchdog {
+	struct file		*file;
+	struct task_struct	*tsk;
+	struct timer_list	timer;
 };
 
-void global_filetable_print_warning_once(void)
+#define DECLARE_FPUT_WATCHDOG_ON_STACK(wd) \
+	struct fput_watchdog wd
+
+/**
+ * fput_watchdog_handler - fput watchdog handler.
+ * @data: Watchdog object address.
+ *
+ * Called when fput() has timed out.
+ * There's not much we can do here to recover so panic() to
+ * capture or recover from it.
+ */
+static void fput_watchdog_handler(struct timer_list *t)
 {
-	pr_err_once("\n**********************************************************\n");
-	pr_err_once("**   NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE   **\n");
-	pr_err_once("**                                                      **\n");
-	pr_err_once("**      VFS FILE TABLE DEBUG is enabled .               **\n");
-	pr_err_once("**  Allocating extra memory and slowing access to files **\n");
-	pr_err_once("**                                                      **\n");
-	pr_err_once("** This means that this is a DEBUG kernel and it is     **\n");
-	pr_err_once("** unsafe for production use.                           **\n");
-	pr_err_once("**                                                      **\n");
-	pr_err_once("** If you see this message and you are not debugging    **\n");
-	pr_err_once("** the kernel, report this immediately to your vendor!  **\n");
-	pr_err_once("**                                                      **\n");
-	pr_err_once("**   NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE   **\n");
-	pr_err_once("**********************************************************\n");
-}
+	struct fput_watchdog *wd = from_timer(wd, t, timer);
+	char d_iname[32] = {0,};
 
-void global_filetable_add(struct file *filp)
-{
-	struct mount *mnt;
+	pr_emerg("**** FPUT timeout ****\npid %8d, %s\n",
+			wd->tsk ? wd->tsk->pid : -1,
+			wd->tsk ? wd->tsk->comm : NULL);
 
-	if (filp->f_path.dentry->d_iname == NULL ||
-	    strlen(filp->f_path.dentry->d_iname) == 0)
-		return;
+	show_stack(wd->tsk, NULL);
 
-	mnt = real_mount(filp->f_path.mnt);
+	if (wd->file && wd->file->f_path.dentry)
+		strncpy(d_iname, wd->file->f_path.dentry->d_iname,
+				sizeof(d_iname) - 1);
 
-	mutex_lock(&global_files_lock);
-	hash_add(global_files_hashtable, &filp->f_hash, (uintptr_t)mnt);
-	mutex_unlock(&global_files_lock);
-}
-
-void global_filetable_del(struct file *filp)
-{
-	mutex_lock(&global_files_lock);
-	hash_del(&filp->f_hash);
-	mutex_unlock(&global_files_lock);
-}
-
-static void global_print_file(struct file *filp, char *path_buffer, int *count)
-{
-	char *pathname;
-
-	pathname = d_path(&filp->f_path, path_buffer, PAGE_SIZE);
-	if (IS_ERR(pathname))
-		pr_err("VFS: File %d Address : %pa partial filename: %s ref_count=%ld\n",
-			++(*count), &filp, filp->f_path.dentry->d_iname,
-			atomic_long_read(&filp->f_count));
+	if (strncmp(d_iname, "TCP", strlen("TCP"))/* &&
+						     sec_debug_is_enabled() */)
+		panic("__fput() for %s file is not finished for %d sec.\n",
+				d_iname, CONFIG_SEC_DEBUG_FPUT_WATCHDOG_TIMEOUT);
 	else
-		pr_err("VFS: File %d Address : %pa full filepath: %s ref_count=%ld\n",
-			++(*count), &filp, pathname,
-			atomic_long_read(&filp->f_count));
+		pr_warn("__fput() for %s file is not finished for %d sec.\n",
+				d_iname, CONFIG_SEC_DEBUG_FPUT_WATCHDOG_TIMEOUT);
 }
 
-static void global_filetable_print(uintptr_t lookup_mnt)
+/**
+ * fput_watchdog_set - Enable watchdog for given fput.
+ * @wd: Watchdog. Must be allocated on the stack.
+ * @file: file to handle.
+ */
+static void fput_watchdog_set(struct fput_watchdog *wd, struct file *file)
 {
-	struct hlist_node *tmp;
-	struct file *filp;
-	struct mount *mnt;
-	int index;
-	int count = 0;
-	char *path_buffer = (char *)__get_free_page(GFP_KERNEL);
+	struct timer_list *timer = &wd->timer;
 
-	mutex_lock(&global_files_lock);
-	pr_err("\n**********************************************************\n");
-	pr_err("**   NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE   **\n");
+	wd->file = file;
+	wd->tsk = current;
 
-	pr_err("\n");
-	pr_err("VFS: The following files hold a reference to the mount\n");
-	pr_err("\n");
-	hash_for_each_possible_safe(global_files_hashtable, filp, tmp, f_hash,
-				    lookup_mnt) {
-		mnt = real_mount(filp->f_path.mnt);
-		if ((uintptr_t)mnt == lookup_mnt)
-			global_print_file(filp, path_buffer, &count);
-	}
-	pr_err("\n");
-	pr_err("VFS: Found total of %d open files\n", count);
-	pr_err("\n");
+	timer_setup_on_stack(timer, fput_watchdog_handler, 0);
+	timer->expires = jiffies + HZ * CONFIG_SEC_DEBUG_FPUT_WATCHDOG_TIMEOUT;
 
-	count = 0;
-	pr_err("\n");
-	pr_err("VFS: The following files need to cleaned up\n");
-	pr_err("\n");
-	hash_for_each_safe(global_files_hashtable, index, tmp, filp, f_hash) {
-		if (atomic_long_read(&filp->f_count) == 0)
-			global_print_file(filp, path_buffer, &count);
-	}
-
-	pr_err("\n");
-	pr_err("VFS: Found total of %d files awaiting clean-up\n", count);
-	pr_err("\n");
-	pr_err("**   NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE   **\n");
-	pr_err("\n**********************************************************\n");
-
-	mutex_unlock(&global_files_lock);
-	free_page((unsigned long)path_buffer);
+	add_timer(timer);
 }
 
-static void global_filetable_print_work_fn(struct work_struct *work)
+/**
+ * fput_watchdog_clear - Disable watchdog.
+ * @wd: Watchdog to disable.
+ */
+static void fput_watchdog_clear(struct fput_watchdog *wd)
 {
-	struct global_filetable_lookup_key *key;
-	uintptr_t lookup_mnt;
+	struct timer_list *timer = &wd->timer;
 
-	key = container_of(work, struct global_filetable_lookup_key, work);
-	lookup_mnt = key->value;
-	kfree(key);
-	global_filetable_print(lookup_mnt);
+	del_timer_sync(timer);
+	destroy_timer_on_stack(timer);
 }
-
-void global_filetable_delayed_print(struct mount *mnt)
-{
-	struct global_filetable_lookup_key *key;
-
-	key = kzalloc(sizeof(*key), GFP_KERNEL);
-	if (key == NULL)
-		return;
-	key->value = (uintptr_t)mnt;
-	INIT_WORK(&key->work, global_filetable_print_work_fn);
-	schedule_work(&key->work);
-}
-#endif /* CONFIG_FILE_TABLE_DEBUG */
+#else
+#define DECLARE_FPUT_WATCHDOG_ON_STACK(wd)
+#define fput_watchdog_set(x, y)
+#define fput_watchdog_clear(x)
+#endif
 
 static void file_free_rcu(struct rcu_head *head)
 {
@@ -325,8 +270,10 @@ static void __fput(struct file *file)
 	struct dentry *dentry = file->f_path.dentry;
 	struct vfsmount *mnt = file->f_path.mnt;
 	struct inode *inode = file->f_inode;
+	DECLARE_FPUT_WATCHDOG_ON_STACK(wd);
 
 	might_sleep();
+	fput_watchdog_set(&wd, file);
 
 	fsnotify_close(file);
 	/*
@@ -356,10 +303,10 @@ static void __fput(struct file *file)
 		put_write_access(inode);
 		__mnt_drop_write(mnt);
 	}
-	global_filetable_del(file);
 	file->f_path.dentry = NULL;
 	file->f_path.mnt = NULL;
 	file->f_inode = NULL;
+	fput_watchdog_clear(&wd);
 	file_free(file);
 	dput(dentry);
 	mntput(mnt);
@@ -396,12 +343,6 @@ void flush_delayed_fput(void)
 }
 
 static DECLARE_DELAYED_WORK(delayed_fput_work, delayed_fput);
-
-void flush_delayed_fput_wait(void)
-{
-	delayed_fput(NULL);
-	flush_delayed_work(&delayed_fput_work);
-}
 
 void fput(struct file *file)
 {
@@ -456,7 +397,6 @@ void __init files_init(void)
 	filp_cachep = kmem_cache_create("filp", sizeof(struct file), 0,
 			SLAB_HWCACHE_ALIGN | SLAB_PANIC, NULL);
 	percpu_counter_init(&nr_files, 0, GFP_KERNEL);
-	global_filetable_print_warning_once();
 }
 
 /*

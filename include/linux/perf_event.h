@@ -54,6 +54,7 @@ struct perf_guest_info_callbacks {
 #include <linux/perf_regs.h>
 #include <linux/workqueue.h>
 #include <linux/cgroup.h>
+#include <linux/security.h>
 #include <asm/local.h>
 
 struct perf_callchain_entry {
@@ -266,8 +267,6 @@ struct pmu {
 	atomic_t			exclusive_cnt; /* < 0: cpu; > 0: tsk */
 	int				task_ctx_nr;
 	int				hrtimer_interval_ms;
-	u32				events_across_hotplug:1,
-					reserved:31;
 
 	/* number of address filters this PMU can do */
 	unsigned int			nr_addr_filters;
@@ -410,7 +409,7 @@ struct pmu {
 	/*
 	 * Set up pmu-private data structures for an AUX area
 	 */
-	void *(*setup_aux)		(int cpu, void **pages,
+	void *(*setup_aux)		(struct perf_event *event, void **pages,
 					 int nr_pages, bool overwrite);
 					/* optional */
 
@@ -491,11 +490,15 @@ struct perf_addr_filters_head {
 	unsigned int		nr_file_filters;
 };
 
+struct perf_addr_filter_range {
+	unsigned long		start;
+	unsigned long		size;
+};
+
 /**
  * enum perf_event_active_state - the states of a event
  */
 enum perf_event_active_state {
-	PERF_EVENT_STATE_DORMANT	= -5,
 	PERF_EVENT_STATE_DEAD		= -4,
 	PERF_EVENT_STATE_EXIT		= -3,
 	PERF_EVENT_STATE_ERROR		= -2,
@@ -583,12 +586,6 @@ struct perf_event {
 	int				group_caps;
 
 	struct perf_event		*group_leader;
-
-	/*
-	 * Protect the pmu, attributes and context of a group leader.
-	 * Note: does not protect the pointer to the group_leader.
-	 */
-	struct mutex			group_leader_mutex;
 	struct pmu			*pmu;
 	void				*pmu_private;
 
@@ -658,7 +655,6 @@ struct perf_event {
 
 	int				oncpu;
 	int				cpu;
-	cpumask_t			readable_on_cpus;
 
 	struct list_head		owner_entry;
 	struct task_struct		*owner;
@@ -687,7 +683,7 @@ struct perf_event {
 	/* address range filters */
 	struct perf_addr_filters_head	addr_filters;
 	/* vma address array for file-based filders */
-	unsigned long			*addr_filters_offs;
+	struct perf_addr_filter_range	*addr_filter_ranges;
 	unsigned long			addr_filters_gen;
 
 	void (*destroy)(struct perf_event *);
@@ -717,17 +713,10 @@ struct perf_event {
 	int				cgrp_defer_enabled;
 #endif
 
+#ifdef CONFIG_SECURITY
+	void *security;
+#endif
 	struct list_head		sb_list;
-
-	/*
-	 * Entry into the list that holds the events whose CPUs
-	 * are offline. These events will be installed once the
-	 * CPU wakes up and will be removed from the list after that
-	 */
-	struct list_head		dormant_event_entry;
-
-	/* Is this event shared with other events */
-	bool					shared;
 #endif /* CONFIG_PERF_EVENTS */
 };
 
@@ -1190,24 +1179,41 @@ extern int perf_cpu_time_max_percent_handler(struct ctl_table *table, int write,
 int perf_event_max_stack_handler(struct ctl_table *table, int write,
 				 void __user *buffer, size_t *lenp, loff_t *ppos);
 
-static inline bool perf_paranoid_any(void)
-{
-	return sysctl_perf_event_paranoid > 2;
-}
+/* Access to perf_event_open(2) syscall. */
+#define PERF_SECURITY_OPEN		0
 
-static inline bool perf_paranoid_tracepoint_raw(void)
+/* Finer grained perf_event_open(2) access control. */
+#define PERF_SECURITY_CPU		1
+#define PERF_SECURITY_KERNEL		2
+#define PERF_SECURITY_TRACEPOINT	3
+
+static inline int perf_is_paranoid(void)
 {
 	return sysctl_perf_event_paranoid > -1;
 }
 
-static inline bool perf_paranoid_cpu(void)
+static inline int perf_allow_kernel(struct perf_event_attr *attr)
 {
-	return sysctl_perf_event_paranoid > 0;
+	if (sysctl_perf_event_paranoid > 1 && !capable(CAP_SYS_ADMIN))
+		return -EACCES;
+
+	return security_perf_event_open(attr, PERF_SECURITY_KERNEL);
 }
 
-static inline bool perf_paranoid_kernel(void)
+static inline int perf_allow_cpu(struct perf_event_attr *attr)
 {
-	return sysctl_perf_event_paranoid > 1;
+	if (sysctl_perf_event_paranoid > 0 && !capable(CAP_SYS_ADMIN))
+		return -EACCES;
+
+	return security_perf_event_open(attr, PERF_SECURITY_CPU);
+}
+
+static inline int perf_allow_tracepoint(struct perf_event_attr *attr)
+{
+	if (sysctl_perf_event_paranoid > -1 && !capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	return security_perf_event_open(attr, PERF_SECURITY_TRACEPOINT);
 }
 
 extern void perf_event_init(void);
@@ -1414,11 +1420,9 @@ static struct device_attribute format_attr_##_name = __ATTR_RO(_name)
 #ifdef CONFIG_PERF_EVENTS
 int perf_event_init_cpu(unsigned int cpu);
 int perf_event_exit_cpu(unsigned int cpu);
-int perf_event_restart_events(unsigned int cpu);
 #else
 #define perf_event_init_cpu	NULL
 #define perf_event_exit_cpu	NULL
-#define perf_event_restart_events NULL
 #endif
 
 #endif /* _LINUX_PERF_EVENT_H */

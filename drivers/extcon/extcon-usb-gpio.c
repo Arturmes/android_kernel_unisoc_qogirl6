@@ -28,7 +28,8 @@
 #include <linux/workqueue.h>
 #include <linux/pinctrl/consumer.h>
 
-#define USB_GPIO_DEBOUNCE_MS	20	/* ms */
+#define USB_GPIO_DEBOUNCE_MS	520	/* ms */
+#define USB_ID_GPIO_DEBOUNCE_MS	350	/* ms */
 
 struct usb_extcon_info {
 	struct device *dev;
@@ -36,7 +37,6 @@ struct usb_extcon_info {
 
 	struct gpio_desc *id_gpiod;
 	struct gpio_desc *vbus_gpiod;
-	struct gpio_desc *vbus_out_gpiod;
 	int id_irq;
 	int vbus_irq;
 
@@ -80,20 +80,30 @@ static void usb_extcon_detect_cable(struct work_struct *work)
 	vbus = info->vbus_gpiod ?
 		gpiod_get_value_cansleep(info->vbus_gpiod) : id;
 
-	/* at first we clean states which are no longer active */
-	if (id) {
-		if (info->vbus_out_gpiod)
-			gpiod_set_value_cansleep(info->vbus_out_gpiod, 0);
-		extcon_set_state_sync(info->edev, EXTCON_USB_HOST, false);
-	}
-	if (!vbus)
-		extcon_set_state_sync(info->edev, EXTCON_USB, false);
+	if (!info->id_gpiod) {
+		printk("##%s## -typec-: id=%d, vbus=%d\n", __func__, id, vbus);
+		/* at first we clean states which are no longer active */
+		if (id)
+			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, false);
+		if (!vbus)
+			extcon_set_state_sync(info->edev, EXTCON_USB, false);
 
-	if (!id) {
-		if (info->vbus_out_gpiod)
-			gpiod_set_value_cansleep(info->vbus_out_gpiod, 1);
-		extcon_set_state_sync(info->edev, EXTCON_USB_HOST, true);
-	} else {
+		if (!id) {
+			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, true);
+		} else {
+			if (vbus)
+				extcon_set_state_sync(info->edev, EXTCON_USB, true);
+		}
+	}
+	else {
+		printk("##%s## -Micro B-: id=%d, vbus=%d\n", __func__, id, vbus);
+		/* at first we clean states which are no longer active */
+		if (id)
+			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, false);
+		if (!vbus)
+			extcon_set_state_sync(info->edev, EXTCON_USB, false);
+		if (!id)
+			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, true);
 		if (vbus)
 			extcon_set_state_sync(info->edev, EXTCON_USB, true);
 	}
@@ -102,6 +112,8 @@ static void usb_extcon_detect_cable(struct work_struct *work)
 static irqreturn_t usb_irq_handler(int irq, void *dev_id)
 {
 	struct usb_extcon_info *info = dev_id;
+
+	printk("##%s## -enter-", __func__);
 
 	queue_delayed_work(system_power_efficient_wq, &info->wq_detcable,
 			   info->debounce_jiffies);
@@ -127,8 +139,6 @@ static int usb_extcon_probe(struct platform_device *pdev)
 	info->id_gpiod = devm_gpiod_get_optional(&pdev->dev, "id", GPIOD_IN);
 	info->vbus_gpiod = devm_gpiod_get_optional(&pdev->dev, "vbus",
 						   GPIOD_IN);
-	info->vbus_out_gpiod = devm_gpiod_get_optional(&pdev->dev, "vbus-out",
-						   GPIOD_OUT_HIGH);
 
 	if (!info->id_gpiod && !info->vbus_gpiod) {
 		dev_err(dev, "failed to get gpios\n");
@@ -140,9 +150,6 @@ static int usb_extcon_probe(struct platform_device *pdev)
 
 	if (IS_ERR(info->vbus_gpiod))
 		return PTR_ERR(info->vbus_gpiod);
-
-	if (IS_ERR(info->vbus_out_gpiod))
-		return PTR_ERR(info->vbus_out_gpiod);
 
 	info->edev = devm_extcon_dev_allocate(dev, usb_extcon_cable);
 	if (IS_ERR(info->edev)) {
@@ -158,7 +165,7 @@ static int usb_extcon_probe(struct platform_device *pdev)
 
 	if (info->id_gpiod)
 		ret = gpiod_set_debounce(info->id_gpiod,
-					 USB_GPIO_DEBOUNCE_MS * 1000);
+					 USB_ID_GPIO_DEBOUNCE_MS * 1000);
 	if (!ret && info->vbus_gpiod)
 		ret = gpiod_set_debounce(info->vbus_gpiod,
 					 USB_GPIO_DEBOUNCE_MS * 1000);
@@ -205,7 +212,7 @@ static int usb_extcon_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, info);
-	device_init_wakeup(&pdev->dev, true);
+	device_set_wakeup_capable(&pdev->dev, true);
 
 	/* Perform initial detection */
 	usb_extcon_detect_cable(&info->wq_detcable.work);

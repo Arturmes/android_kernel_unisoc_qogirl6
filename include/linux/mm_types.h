@@ -290,6 +290,11 @@ struct vm_area_struct {
 	/* linked list of VM areas per task, sorted by address */
 	struct vm_area_struct *vm_next, *vm_prev;
 
+#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
+	atomic_t vm_ref_count;
+	struct rcu_head vm_rcu;
+#endif
+
 	struct rb_node vm_rb;
 
 	/*
@@ -351,7 +356,6 @@ struct vm_area_struct {
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
 	seqcount_t vm_sequence;
-	atomic_t vm_ref_count;		/* see vma_get(), vma_put() */
 #endif
 } __randomize_layout;
 
@@ -371,7 +375,7 @@ struct mm_struct {
 	struct vm_area_struct *mmap;		/* list of VMAs */
 	struct rb_root mm_rb;
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
-	rwlock_t mm_rb_lock;
+	seqlock_t mm_seq;
 #endif
 	u64 vmacache_seqnum;                   /* per-thread vmacache */
 #ifdef CONFIG_MMU
@@ -435,8 +439,6 @@ struct mm_struct {
 	unsigned long exec_vm;		/* VM_EXEC & ~VM_WRITE & ~VM_STACK */
 	unsigned long stack_vm;		/* VM_STACK */
 	unsigned long def_flags;
-
-	spinlock_t arg_lock; /* protect the below fields */
 	unsigned long start_code, end_code, start_data, end_data;
 	unsigned long start_brk, brk, start_stack;
 	unsigned long arg_start, arg_end, env_start, env_end;
@@ -525,6 +527,10 @@ struct mm_struct {
 #if IS_ENABLED(CONFIG_HMM)
 	/* HMM needs to track a few things per mm */
 	struct hmm *hmm;
+#endif
+
+#ifdef CONFIG_PROTECT_LRU
+	int protect;
 #endif
 } __randomize_layout;
 

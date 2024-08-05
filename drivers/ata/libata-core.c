@@ -4986,10 +4986,7 @@ int ata_std_qc_defer(struct ata_queued_cmd *qc)
 	return ATA_DEFER_LINK;
 }
 
-enum ata_completion_errors ata_noop_qc_prep(struct ata_queued_cmd *qc)
-{
-	return AC_ERR_OK;
-}
+void ata_noop_qc_prep(struct ata_queued_cmd *qc) { }
 
 /**
  *	ata_sg_init - Associate command with scatter-gather table.
@@ -5244,7 +5241,7 @@ void ata_qc_complete(struct ata_queued_cmd *qc)
 	struct ata_port *ap = qc->ap;
 
 	/* Trigger the LED (if available) */
-	ledtrig_disk_activity();
+	ledtrig_disk_activity(!!(qc->tf.flags & ATA_TFLAG_WRITE));
 
 	/* XXX: New EH and old EH use different mechanisms to
 	 * synchronize EH with regular execution path.
@@ -5442,9 +5439,7 @@ void ata_qc_issue(struct ata_queued_cmd *qc)
 		return;
 	}
 
-	qc->err_mask |= ap->ops->qc_prep(qc);
-	if (unlikely(qc->err_mask))
-		goto err;
+	ap->ops->qc_prep(qc);
 	trace_ata_qc_issue(qc);
 	qc->err_mask |= ap->ops->qc_issue(qc);
 	if (unlikely(qc->err_mask))

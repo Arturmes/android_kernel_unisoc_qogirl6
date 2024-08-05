@@ -64,6 +64,7 @@ static void put_prev_task_stop(struct rq *rq, struct task_struct *prev)
 {
 	struct task_struct *curr = rq->curr;
 	u64 delta_exec;
+	int cpu = cpu_of(rq);
 
 	delta_exec = rq_clock_task(rq) - curr->se.exec_start;
 	if (unlikely((s64)delta_exec < 0))
@@ -73,6 +74,12 @@ static void put_prev_task_stop(struct rq *rq, struct task_struct *prev)
 			max(curr->se.statistics.exec_max, delta_exec));
 
 	curr->se.sum_exec_runtime += delta_exec;
+
+	if (cpumask_test_cpu(cpu, &min_cap_cpu_mask))
+		curr->se.s_sum_exec_runtime += delta_exec;
+	else
+		curr->se.b_sum_exec_runtime += delta_exec;
+
 	account_group_exec_runtime(curr, delta_exec);
 
 	curr->se.exec_start = rq_clock_task(rq);
@@ -140,6 +147,6 @@ const struct sched_class stop_sched_class = {
 	.switched_to		= switched_to_stop,
 	.update_curr		= update_curr_stop,
 #ifdef CONFIG_SCHED_WALT
-	.fixup_walt_sched_stats	= fixup_walt_sched_stats_common,
+	.fixup_cumulative_runnable_avg = walt_fixup_cumulative_runnable_avg,
 #endif
 };

@@ -19,7 +19,6 @@
 #include <asm/bug.h>
 #include <asm/proc-fns.h>
 
-#include <asm/bug.h>
 #include <asm/memory.h>
 #include <asm/pgtable-hwdef.h>
 #include <asm/pgtable-prot.h>
@@ -131,6 +130,13 @@ static inline pte_t set_pte_bit(pte_t pte, pgprot_t prot)
 	return pte;
 }
 
+static inline pte_t pte_wrprotect(pte_t pte)
+{
+	pte = clear_pte_bit(pte, __pgprot(PTE_WRITE));
+	pte = set_pte_bit(pte, __pgprot(PTE_RDONLY));
+	return pte;
+}
+
 static inline pte_t pte_mkwrite(pte_t pte)
 {
 	pte = set_pte_bit(pte, __pgprot(PTE_WRITE));
@@ -153,20 +159,6 @@ static inline pte_t pte_mkdirty(pte_t pte)
 	if (pte_write(pte))
 		pte = clear_pte_bit(pte, __pgprot(PTE_RDONLY));
 
-	return pte;
-}
-
-static inline pte_t pte_wrprotect(pte_t pte)
-{
-	/*
-	 * If hardware-dirty (PTE_WRITE/DBM bit set and PTE_RDONLY
-	 * clear), set the PTE_DIRTY bit.
-	 */
-	if (pte_hw_dirty(pte))
-		pte = pte_mkdirty(pte);
-
-	pte = clear_pte_bit(pte, __pgprot(PTE_WRITE));
-	pte = set_pte_bit(pte, __pgprot(PTE_RDONLY));
 	return pte;
 }
 
@@ -208,34 +200,6 @@ static inline pmd_t pmd_mkcont(pmd_t pmd)
 
 static inline void set_pte(pte_t *ptep, pte_t pte)
 {
-#ifdef CONFIG_ARM64_STRICT_BREAK_BEFORE_MAKE
-	pteval_t old = pte_val(*ptep);
-	pteval_t new = pte_val(pte);
-
-	/* Only problematic if valid -> valid */
-	if (!(old & new & PTE_VALID))
-		goto pte_ok;
-
-	/* Changing attributes should go via an invalid entry */
-	if (WARN_ON((old & PTE_ATTRINDX_MASK) != (new & PTE_ATTRINDX_MASK)))
-		goto pte_bad;
-
-	/* Change of OA is only an issue if one mapping is writable */
-	if (!(old & new & PTE_RDONLY) &&
-	    WARN_ON(pte_pfn(*ptep) != pte_pfn(pte)))
-		goto pte_bad;
-
-	goto pte_ok;
-
-pte_bad:
-	*ptep = __pte(0);
-	dsb(ishst);
-	asm("tlbi	vmalle1is");
-	dsb(ish);
-	isb();
-pte_ok:
-#endif
-
 	*ptep = pte;
 
 	/*
@@ -439,11 +403,6 @@ static inline phys_addr_t pmd_page_paddr(pmd_t pmd)
 
 static inline void pte_unmap(pte_t *pte) { }
 
-static inline unsigned long pmd_page_vaddr(pmd_t pmd)
-{
-	return (unsigned long) __va(pmd_page_paddr(pmd));
-}
-
 /* Find an entry in the third-level page table. */
 #define pte_index(addr)		(((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1))
 
@@ -492,11 +451,6 @@ static inline void pud_clear(pud_t *pudp)
 static inline phys_addr_t pud_page_paddr(pud_t pud)
 {
 	return pud_val(pud) & PHYS_MASK & (s32)PAGE_MASK;
-}
-
-static inline unsigned long pud_page_vaddr(pud_t pud)
-{
-	return (unsigned long) __va(pud_page_paddr(pud));
 }
 
 /* Find an entry in the second-level page table. */
@@ -549,11 +503,6 @@ static inline void pgd_clear(pgd_t *pgdp)
 static inline phys_addr_t pgd_page_paddr(pgd_t pgd)
 {
 	return pgd_val(pgd) & PHYS_MASK & (s32)PAGE_MASK;
-}
-
-static inline unsigned long pgd_page_vaddr(pgd_t pgd)
-{
-	return (unsigned long) __va(pgd_page_paddr(pgd));
 }
 
 /* Find an entry in the frst-level page table. */
@@ -694,6 +643,12 @@ static inline void ptep_set_wrprotect(struct mm_struct *mm, unsigned long addres
 	pte = READ_ONCE(*ptep);
 	do {
 		old_pte = pte;
+		/*
+		 * If hardware-dirty (PTE_WRITE/DBM bit set and PTE_RDONLY
+		 * clear), set the PTE_DIRTY bit.
+		 */
+		if (pte_hw_dirty(pte))
+			pte = pte_mkdirty(pte);
 		pte = pte_wrprotect(pte);
 		pte_val(pte) = cmpxchg_relaxed(&pte_val(*ptep),
 					       pte_val(old_pte), pte_val(pte));

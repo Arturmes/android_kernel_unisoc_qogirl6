@@ -102,7 +102,6 @@ static struct sk_buff *prio_peek(struct Qdisc *sch)
 {
 	struct prio_sched_data *q = qdisc_priv(sch);
 	int prio;
-
 	if (!q->enable_flow)
 		return NULL;
 
@@ -119,7 +118,6 @@ static struct sk_buff *prio_dequeue(struct Qdisc *sch)
 {
 	struct prio_sched_data *q = qdisc_priv(sch);
 	int prio;
-
 	if (!q->enable_flow)
 		return NULL;
 
@@ -167,7 +165,8 @@ static int prio_tune(struct Qdisc *sch, struct nlattr *opt)
 	struct Qdisc *queues[TCQ_PRIO_BANDS];
 	int oldbands = q->bands, i;
 	struct tc_prio_qopt *qopt;
-	int flow_change = 0;
+
+    int flow_change = 0;
 
 	if (nla_len(opt) < sizeof(*qopt))
 		return -EINVAL;
@@ -215,10 +214,10 @@ static int prio_tune(struct Qdisc *sch, struct nlattr *opt)
 	}
 
 	sch_tree_unlock(sch);
-
-	/* Schedule qdisc when flow re-enabled */
+		/* Schedule qdisc when flow re-enabled */
 	if (flow_change && q->enable_flow) {
-		if (!test_bit(__QDISC_STATE_DEACTIVATED, &sch->state))
+		if (!test_bit(__QDISC_STATE_DEACTIVATED,
+			      &sch->state))
 			__netif_schedule(qdisc_root(sch));
 	}
 	return 0;

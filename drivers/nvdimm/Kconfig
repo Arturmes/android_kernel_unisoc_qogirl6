@@ -102,4 +102,20 @@ config NVDIMM_DAX
 
 	  Select Y if unsure
 
+config OF_PMEM
+	tristate "Device-tree support for persistent memory regions"
+	depends on OF
+	default LIBNVDIMM
+	help
+	  Allows regions of persistent memory to be described in the
+	  device-tree.
+
+	  Select Y if unsure.
+
+config SPRD_PMEM_GCOV
+	bool "open gcov for kernel pmem"
+	depends on GCOV_PROFILE_MODULES
+	help
+	  Say Y here to enable pmem gcov
+
 endif

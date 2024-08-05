@@ -433,14 +433,19 @@ static struct cpuset *alloc_trial_cpuset(struct cpuset *cs)
 
 	if (!alloc_cpumask_var(&trial->cpus_allowed, GFP_KERNEL))
 		goto free_cs;
+	if (!alloc_cpumask_var(&trial->cpus_requested, GFP_KERNEL))
+		goto free_allowed;
 	if (!alloc_cpumask_var(&trial->effective_cpus, GFP_KERNEL))
 		goto free_cpus;
 
 	cpumask_copy(trial->cpus_allowed, cs->cpus_allowed);
+	cpumask_copy(trial->cpus_requested, cs->cpus_requested);
 	cpumask_copy(trial->effective_cpus, cs->effective_cpus);
 	return trial;
 
 free_cpus:
+	free_cpumask_var(trial->cpus_requested);
+free_allowed:
 	free_cpumask_var(trial->cpus_allowed);
 free_cs:
 	kfree(trial);
@@ -454,6 +459,7 @@ free_cs:
 static void free_trial_cpuset(struct cpuset *trial)
 {
 	free_cpumask_var(trial->effective_cpus);
+	free_cpumask_var(trial->cpus_requested);
 	free_cpumask_var(trial->cpus_allowed);
 	kfree(trial);
 }
@@ -836,7 +842,6 @@ static void rebuild_sched_domains_locked(void)
 	int ndoms;
 
 	lockdep_assert_held(&cpuset_mutex);
-	get_online_cpus();
 
 	/*
 	 * We have raced with CPU hotplug. Don't do anything to avoid
@@ -844,15 +849,13 @@ static void rebuild_sched_domains_locked(void)
 	 * Anyways, hotplug work item will rebuild sched domains.
 	 */
 	if (!cpumask_equal(top_cpuset.effective_cpus, cpu_active_mask))
-		goto out;
+		return;
 
 	/* Generate domain masks and attrs */
 	ndoms = generate_sched_domains(&doms, &attr);
 
 	/* Have scheduler rebuild the domains */
 	partition_sched_domains(ndoms, doms, attr);
-out:
-	put_online_cpus();
 }
 #else /* !CONFIG_SMP */
 static void rebuild_sched_domains_locked(void)
@@ -862,9 +865,11 @@ static void rebuild_sched_domains_locked(void)
 
 void rebuild_sched_domains(void)
 {
+	get_online_cpus();
 	mutex_lock(&cpuset_mutex);
 	rebuild_sched_domains_locked();
 	mutex_unlock(&cpuset_mutex);
+	put_online_cpus();
 }
 
 /**
@@ -969,23 +974,23 @@ static int update_cpumask(struct cpuset *cs, struct cpuset *trialcs,
 		return -EACCES;
 
 	/*
-	 * An empty cpus_allowed is ok only if the cpuset has no tasks.
+	 * An empty cpus_requested is ok only if the cpuset has no tasks.
 	 * Since cpulist_parse() fails on an empty mask, we special case
 	 * that parsing.  The validate_change() call ensures that cpusets
 	 * with tasks have cpus.
 	 */
 	if (!*buf) {
-		cpumask_clear(trialcs->cpus_allowed);
+		cpumask_clear(trialcs->cpus_requested);
 	} else {
 		retval = cpulist_parse(buf, trialcs->cpus_requested);
 		if (retval < 0)
 			return retval;
-
-		if (!cpumask_subset(trialcs->cpus_requested, cpu_present_mask))
-			return -EINVAL;
-
-		cpumask_and(trialcs->cpus_allowed, trialcs->cpus_requested, cpu_active_mask);
 	}
+
+	if (!cpumask_subset(trialcs->cpus_requested, cpu_present_mask))
+		return -EINVAL;
+
+	cpumask_and(trialcs->cpus_allowed, trialcs->cpus_requested, cpu_active_mask);
 
 	/* Nothing to do if the cpus didn't change */
 	if (cpumask_equal(cs->cpus_requested, trialcs->cpus_requested))

@@ -19,7 +19,6 @@
 #include <asm/cpu.h>
 #include <asm/cputype.h>
 #include <asm/cpufeature.h>
-#include <asm/elf.h>
 
 #include <linux/bitops.h>
 #include <linux/bug.h>
@@ -27,6 +26,7 @@
 #include <linux/elf.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/of_fdt.h>
 #include <linux/personality.h>
 #include <linux/preempt.h>
 #include <linux/printk.h>
@@ -34,12 +34,7 @@
 #include <linux/sched.h>
 #include <linux/smp.h>
 #include <linux/delay.h>
-#include <linux/of_fdt.h>
-
-char* (*arch_read_hardware_id)(void);
-EXPORT_SYMBOL(arch_read_hardware_id);
-
-static const char *machine_name;
+#include <linux/of.h>
 
 /*
  * In case the boot CPU is hotpluggable, we record its initial state and
@@ -57,6 +52,8 @@ static char *icache_policy_str[] = {
 };
 
 unsigned long __icache_flags;
+
+const char *system_serial;
 
 static const char *const hwcap_str[] = {
 	"fp",
@@ -128,14 +125,35 @@ static const char *const compat_hwcap2_str[] = {
 };
 #endif /* CONFIG_COMPAT */
 
+static int __init init_machine_late(void)
+{
+	struct device_node *root;
+	int ret;
+
+	root = of_find_node_by_path("/");
+	if (root) {
+		ret = of_property_read_string(root, "serial-number",
+					      &system_serial);
+		if (ret)
+			system_serial = NULL;
+	}
+
+	if (!system_serial)
+		system_serial = kasprintf(GFP_KERNEL, "%08x%08x", 0, 0);
+
+	return 0;
+}
+late_initcall(init_machine_late);
+
 static int c_show(struct seq_file *m, void *v)
 {
 	int i, j;
 	bool compat = personality(current->personality) == PER_LINUX32;
 
 	seq_printf(m, "Processor\t: AArch64 Processor rev %d (%s)\n",
-		read_cpuid_id() & 15, ELF_PLATFORM);
-	for_each_present_cpu(i) {
+		read_cpuid_id() & 0xf, ELF_PLATFORM);
+
+	for_each_online_cpu(i) {
 		struct cpuinfo_arm64 *cpuinfo = &per_cpu(cpu_data, i);
 		u32 midr = cpuinfo->reg_midr;
 
@@ -185,10 +203,10 @@ static int c_show(struct seq_file *m, void *v)
 		seq_printf(m, "CPU revision\t: %d\n\n", MIDR_REVISION(midr));
 	}
 
-	if (!arch_read_hardware_id)
-		seq_printf(m, "Hardware\t: %s\n", machine_name);
-	else
-		seq_printf(m, "Hardware\t: %s\n", arch_read_hardware_id());
+	if (of_flat_dt_get_cpuinfo_hw())
+		seq_printf(m, "Hardware\t: %s\n", of_flat_dt_get_cpuinfo_hw());
+
+	seq_printf(m, "Serial\t\t: %s\n", system_serial);
 
 	return 0;
 }
@@ -332,8 +350,7 @@ static void cpuinfo_detect_icache_policy(struct cpuinfo_arm64 *info)
 		set_bit(ICACHEF_ALIASING, &__icache_flags);
 	}
 
-	pr_debug("Detected %s I-cache on CPU%d\n", icache_policy_str[l1ip],
-			cpu);
+	pr_info("Detected %s I-cache on CPU%d\n", icache_policy_str[l1ip], cpu);
 }
 
 static void __cpuinfo_store_cpu(struct cpuinfo_arm64 *info)
@@ -392,7 +409,6 @@ void __init cpuinfo_store_boot_cpu(void)
 
 	boot_cpu_data = *info;
 	init_cpu_features(&boot_cpu_data);
-	machine_name = of_flat_dt_get_machine_name();
 }
 
 device_initcall(cpuinfo_regs_init);

@@ -494,43 +494,6 @@ out:
 EXPORT_SYMBOL_GPL(usb_gadget_wakeup);
 
 /**
- * usb_gsi_ep_op - performs operation on GSI accelerated EP based on EP op code
- *
- * Operations such as EP configuration, TRB allocation, StartXfer etc.
- * See gsi_ep_op for more details.
- */
-int usb_gsi_ep_op(struct usb_ep *ep,
-		struct usb_gsi_request *req, enum gsi_ep_op op)
-{
-	if (ep->ops->gsi_ep_op)
-		return ep->ops->gsi_ep_op(ep, req, op);
-
-	return -EOPNOTSUPP;
-}
-EXPORT_SYMBOL(usb_gsi_ep_op);
-
-/**
- * usb_gadget_func_wakeup - send a function remote wakeup up notification
- * to the host connected to this gadget
- * @gadget: controller used to wake up the host
- * @interface_id: the interface which triggered the remote wakeup event
- *
- * Returns zero on success. Otherwise, negative error code is returned.
- */
-int usb_gadget_func_wakeup(struct usb_gadget *gadget,
-	int interface_id)
-{
-	if (gadget->speed != USB_SPEED_SUPER)
-		return -EOPNOTSUPP;
-
-	if (!gadget->ops->func_wakeup)
-		return -EOPNOTSUPP;
-
-	return gadget->ops->func_wakeup(gadget, interface_id);
-}
-EXPORT_SYMBOL(usb_gadget_func_wakeup);
-
-/**
  * usb_gadget_set_selfpowered - sets the device selfpowered feature.
  * @gadget:the device being declared as self-powered
  *
@@ -1550,7 +1513,42 @@ ssize_t name##_show(struct device *dev,					\
 static DEVICE_ATTR_RO(name)
 
 static USB_UDC_SPEED_ATTR(current_speed, speed);
-static USB_UDC_SPEED_ATTR(maximum_speed, max_speed);
+
+#define USB_UDC_MAXSPEED_ATTR(name, param)				\
+ssize_t name##_show(struct device *dev,					\
+		struct device_attribute *attr, char *buf)		\
+{									\
+	struct usb_udc *udc = container_of(dev, struct usb_udc, dev);	\
+	return snprintf(buf, PAGE_SIZE, "%s\n",				\
+			usb_speed_string(udc->gadget->param));		\
+}									\
+static ssize_t name##_store(struct device *dev,				\
+		struct device_attribute *attr,				\
+		 const char *buf, size_t size)				\
+{									\
+	struct usb_udc *udc = container_of(dev, struct usb_udc, dev);	\
+	unsigned int speed = USB_SPEED_UNKNOWN;		\
+									\
+	if (!strncmp(buf, "low-speed", 8))				\
+		speed = USB_SPEED_LOW;					\
+	else if (!strncmp(buf, "full-speed", 10))			\
+		speed = USB_SPEED_FULL;					\
+	else if (!strncmp(buf, "high-speed", 10))			\
+		speed = USB_SPEED_HIGH;					\
+	else if (!strncmp(buf, "super-speed-plus", 16))			\
+		speed = USB_SPEED_SUPER_PLUS;				\
+	else if (!strncmp(buf, "super-speed", 11))			\
+		speed = USB_SPEED_SUPER;				\
+	else if (kstrtouint(buf, 0, &speed) < 0)	\
+		return -EINVAL;					\
+	if (speed > USB_SPEED_SUPER_PLUS)				\
+		return -EINVAL;						\
+	udc->gadget->param = (enum usb_device_speed)speed;					\
+	return strlen(usb_speed_string((enum usb_device_speed)speed));		\
+}									\
+static DEVICE_ATTR_RW(name)
+
+static USB_UDC_MAXSPEED_ATTR(maximum_speed, max_speed);
 
 #define USB_UDC_ATTR(name)					\
 ssize_t name##_show(struct device *dev,				\

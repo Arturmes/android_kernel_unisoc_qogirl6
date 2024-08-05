@@ -602,10 +602,6 @@ static int intel_config_set_pull(struct intel_pinctrl *pctrl, unsigned pin,
 
 		value |= PADCFG1_TERM_UP;
 
-		/* Set default strength value in case none is given */
-		if (arg == 1)
-			arg = 5000;
-
 		switch (arg) {
 		case 20000:
 			value |= PADCFG1_TERM_20K << PADCFG1_TERM_SHIFT;
@@ -627,10 +623,6 @@ static int intel_config_set_pull(struct intel_pinctrl *pctrl, unsigned pin,
 
 	case PIN_CONFIG_BIAS_PULL_DOWN:
 		value &= ~(PADCFG1_TERM_UP | PADCFG1_TERM_MASK);
-
-		/* Set default strength value in case none is given */
-		if (arg == 1)
-			arg = 5000;
 
 		switch (arg) {
 		case 20000:
@@ -1013,7 +1005,7 @@ static irqreturn_t intel_gpio_community_irq_handler(struct intel_pinctrl *pctrl,
 			if (padno >= community->npins)
 				break;
 
-			irq = irq_find_mapping(gc->irqdomain,
+			irq = irq_find_mapping(gc->irq.domain,
 					       community->pin_base + padno);
 			generic_handle_irq(irq);
 

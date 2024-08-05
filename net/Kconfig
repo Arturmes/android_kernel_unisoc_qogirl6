@@ -240,7 +240,6 @@ source "net/switchdev/Kconfig"
 source "net/l3mdev/Kconfig"
 source "net/qrtr/Kconfig"
 source "net/ncsi/Kconfig"
-source "net/rmnet_data/Kconfig"
 
 config RPS
 	bool
@@ -291,7 +290,6 @@ config BPF_JIT
 	bool "enable BPF Just In Time compiler"
 	depends on HAVE_CBPF_JIT || HAVE_EBPF_JIT
 	depends on MODULES
-	depends on !CFI
 	---help---
 	  Berkeley Packet Filter filtering capabilities are normally handled
 	  by an interpreter. This option allows kernel to generate a native
@@ -326,15 +324,6 @@ config NET_FLOW_LIMIT
 	  maintain capacity for the other flows. This feature provides servers
 	  with many clients some protection against DoS by a single (spoofed)
 	  flow that greatly exceeds average workload.
-
-config SOCKEV_NLMCAST
-	bool "Enable SOCKEV Netlink Multicast"
-	default n
-	---help---
-	  Default client for SOCKEV notifier events. Sends multicast netlink
-	  messages whenever the socket event notifier is invoked. Enable if
-	  user space entities need to be notified of socket events without
-	  having to poll /proc
 
 menu "Network testing"
 
@@ -414,6 +403,7 @@ source "net/9p/Kconfig"
 source "net/caif/Kconfig"
 source "net/ceph/Kconfig"
 source "net/nfc/Kconfig"
+source "net/ims_bridge/Kconfig"
 source "net/psample/Kconfig"
 source "net/ife/Kconfig"
 

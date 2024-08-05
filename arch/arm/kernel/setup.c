@@ -32,6 +32,7 @@
 #include <linux/compiler.h>
 #include <linux/sort.h>
 #include <linux/psci.h>
+#include <linux/of_fdt.h>
 
 #include <asm/unified.h>
 #include <asm/cp15.h>
@@ -112,15 +113,6 @@ EXPORT_SYMBOL(elf_hwcap);
 unsigned int elf_hwcap2 __read_mostly;
 EXPORT_SYMBOL(elf_hwcap2);
 
-
-char* (*arch_read_hardware_id)(void);
-EXPORT_SYMBOL(arch_read_hardware_id);
-
-unsigned int boot_reason;
-EXPORT_SYMBOL(boot_reason);
-
-unsigned int cold_boot;
-EXPORT_SYMBOL(cold_boot);
 
 #ifdef MULTI_CPU
 struct processor processor __ro_after_init;
@@ -1080,8 +1072,6 @@ void __init hyp_mode_check(void)
 #endif
 }
 
-void __init __weak init_random_pool(void) { }
-
 void __init setup_arch(char **cmdline_p)
 {
 	const struct machine_desc *mdesc;
@@ -1170,8 +1160,6 @@ void __init setup_arch(char **cmdline_p)
 
 	if (mdesc->init_early)
 		mdesc->init_early();
-
-	init_random_pool();
 }
 
 
@@ -1250,8 +1238,13 @@ static int c_show(struct seq_file *m, void *v)
 		 */
 		seq_printf(m, "processor\t: %d\n", i);
 		cpuid = is_smp() ? per_cpu(cpu_data, i).cpuid : read_cpuid_id();
+
+#if defined(CONFIG_AARCH32_SHOW_AARCH64_CPUINFO)
+		seq_printf(m, "model name\t: ARMv8 Processor\n");
+#else
 		seq_printf(m, "model name\t: %s rev %d (%s)\n",
 			   cpu_name, cpuid & 15, elf_platform);
+#endif
 
 #if defined(CONFIG_SMP)
 		seq_printf(m, "BogoMIPS\t: %lu.%02lu\n",
@@ -1274,8 +1267,13 @@ static int c_show(struct seq_file *m, void *v)
 				seq_printf(m, "%s ", hwcap2_str[j]);
 
 		seq_printf(m, "\nCPU implementer\t: 0x%02x\n", cpuid >> 24);
+
+#if defined(CONFIG_AARCH32_SHOW_AARCH64_CPUINFO)
+		seq_printf(m, "CPU architecture: 8\n");
+#else
 		seq_printf(m, "CPU architecture: %s\n",
 			   proc_arch[cpu_architecture()]);
+#endif
 
 		if ((cpuid & 0x0008f000) == 0x00000000) {
 			/* pre-ARM7 */
@@ -1296,10 +1294,10 @@ static int c_show(struct seq_file *m, void *v)
 		seq_printf(m, "CPU revision\t: %d\n\n", cpuid & 15);
 	}
 
-	if (!arch_read_hardware_id)
-		seq_printf(m, "Hardware\t: %s\n", machine_name);
+	if (of_flat_dt_get_cpuinfo_hw())
+		seq_printf(m, "Hardware\t: %s\n", of_flat_dt_get_cpuinfo_hw());
 	else
-		seq_printf(m, "Hardware\t: %s\n", arch_read_hardware_id());
+		seq_printf(m, "Hardware\t: %s\n", machine_name);
 	seq_printf(m, "Revision\t: %04x\n", system_rev);
 	seq_printf(m, "Serial\t\t: %s\n", system_serial);
 

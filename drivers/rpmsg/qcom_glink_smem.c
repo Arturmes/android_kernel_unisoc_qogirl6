@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2016, Linaro Ltd
- * Copyright (c) 2018-2019, The Linux Foundation, All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -30,6 +29,8 @@
 #include <linux/workqueue.h>
 #include <linux/list.h>
 
+#include <linux/delay.h>
+#include <linux/rpmsg.h>
 #include <linux/rpmsg/qcom_glink.h>
 
 #include "qcom_glink_native.h"
@@ -80,14 +81,9 @@ static size_t glink_smem_rx_avail(struct qcom_glink_pipe *np)
 	tail = le32_to_cpu(*pipe->tail);
 
 	if (head < tail)
-		len = pipe->native.length - tail + head;
+		return pipe->native.length - tail + head;
 	else
-		len = head - tail;
-
-	if (WARN_ON_ONCE(len > pipe->native.length))
-		len = 0;
-
-	return len;
+		return head - tail;
 }
 
 static void glink_smem_rx_peak(struct qcom_glink_pipe *np,
@@ -98,10 +94,6 @@ static void glink_smem_rx_peak(struct qcom_glink_pipe *np,
 	u32 tail;
 
 	tail = le32_to_cpu(*pipe->tail);
-
-	if (WARN_ON_ONCE(tail > pipe->native.length))
-		return;
-
 	tail += offset;
 	if (tail >= pipe->native.length)
 		tail -= pipe->native.length;
@@ -124,7 +116,7 @@ static void glink_smem_rx_advance(struct qcom_glink_pipe *np,
 
 	tail += count;
 	if (tail >= pipe->native.length)
-		tail %= pipe->native.length;
+		tail -= pipe->native.length;
 
 	*pipe->tail = cpu_to_le32(tail);
 }
@@ -149,9 +141,6 @@ static size_t glink_smem_tx_avail(struct qcom_glink_pipe *np)
 	else
 		avail -= FIFO_FULL_RESERVE + TX_BLOCKED_CMD_RESERVE;
 
-	if (WARN_ON_ONCE(avail > pipe->native.length))
-		avail = 0;
-
 	return avail;
 }
 
@@ -160,9 +149,6 @@ static unsigned int glink_smem_tx_write_one(struct glink_smem_pipe *pipe,
 					    const void *data, size_t count)
 {
 	size_t len;
-
-	if (WARN_ON_ONCE(head > pipe->native.length))
-		return head;
 
 	len = min_t(size_t, count, pipe->native.length - head);
 	if (len)
@@ -229,7 +215,7 @@ struct qcom_glink *qcom_glink_smem_register(struct device *parent,
 	ret = device_register(dev);
 	if (ret) {
 		pr_err("failed to register glink edge\n");
-		kfree(dev);
+		put_device(dev);
 		return ERR_PTR(ret);
 	}
 
@@ -237,21 +223,21 @@ struct qcom_glink *qcom_glink_smem_register(struct device *parent,
 				   &remote_pid);
 	if (ret) {
 		dev_err(dev, "failed to parse qcom,remote-pid\n");
-		goto unregister;
+		goto err_put_dev;
 	}
 
 	rx_pipe = devm_kzalloc(dev, sizeof(*rx_pipe), GFP_KERNEL);
 	tx_pipe = devm_kzalloc(dev, sizeof(*tx_pipe), GFP_KERNEL);
 	if (!rx_pipe || !tx_pipe) {
 		ret = -ENOMEM;
-		goto unregister;
+		goto err_put_dev;
 	}
 
 	ret = qcom_smem_alloc(remote_pid,
 			      SMEM_GLINK_NATIVE_XPRT_DESCRIPTOR, 32);
 	if (ret && ret != -EEXIST) {
 		dev_err(dev, "failed to allocate glink descriptors\n");
-		goto unregister;
+		goto err_put_dev;
 	}
 
 	descs = qcom_smem_get(remote_pid,
@@ -259,13 +245,13 @@ struct qcom_glink *qcom_glink_smem_register(struct device *parent,
 	if (IS_ERR(descs)) {
 		dev_err(dev, "failed to acquire xprt descriptor\n");
 		ret = PTR_ERR(descs);
-		goto unregister;
+		goto err_put_dev;
 	}
 
 	if (size != 32) {
 		dev_err(dev, "glink descriptor of invalid size\n");
 		ret = -EINVAL;
-		goto unregister;
+		goto err_put_dev;
 	}
 
 	tx_pipe->tail = &descs[0];
@@ -277,7 +263,7 @@ struct qcom_glink *qcom_glink_smem_register(struct device *parent,
 			      SZ_16K);
 	if (ret && ret != -EEXIST) {
 		dev_err(dev, "failed to allocate TX fifo\n");
-		goto unregister;
+		goto err_put_dev;
 	}
 
 	tx_pipe->fifo = qcom_smem_get(remote_pid, SMEM_GLINK_NATIVE_XPRT_FIFO_0,
@@ -285,7 +271,7 @@ struct qcom_glink *qcom_glink_smem_register(struct device *parent,
 	if (IS_ERR(tx_pipe->fifo)) {
 		dev_err(dev, "failed to acquire TX fifo\n");
 		ret = PTR_ERR(tx_pipe->fifo);
-		goto unregister;
+		goto err_put_dev;
 	}
 
 	rx_pipe->native.avail = glink_smem_rx_avail;
@@ -306,12 +292,12 @@ struct qcom_glink *qcom_glink_smem_register(struct device *parent,
 					false);
 	if (IS_ERR(glink)) {
 		ret = PTR_ERR(glink);
-		goto unregister;
+		goto err_put_dev;
 	}
 
 	return glink;
 
-unregister:
+err_put_dev:
 	device_unregister(dev);
 
 	return ERR_PTR(ret);

@@ -134,8 +134,6 @@ struct tc_prio_qopt {
 	__u8	enable_flow;		/* Enable dequeue */
 };
 
-#define TCQ_PRIO_FLOW_CONTROL 1
-
 /* MULTIQ section */
 
 struct tc_multiq_qopt {

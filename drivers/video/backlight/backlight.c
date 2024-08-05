@@ -24,6 +24,7 @@
 static struct list_head backlight_dev_list;
 static struct mutex backlight_dev_list_mutex;
 static struct blocking_notifier_head backlight_notifier;
+static struct blocking_notifier_head bl_level_notifier;
 
 static const char *const backlight_types[] = {
 	[BACKLIGHT_RAW] = "raw",
@@ -178,16 +179,19 @@ int backlight_device_set_brightness(struct backlight_device *bd,
 	mutex_lock(&bd->ops_lock);
 	if (bd->ops) {
 		if (brightness > bd->props.max_brightness)
-			rc = -EINVAL;
-		else {
-			pr_debug("set brightness to %lu\n", brightness);
-			bd->props.brightness = brightness;
-			rc = backlight_update_status(bd);
-		}
+			brightness = bd->props.max_brightness;
+		else if (brightness < 0)
+			brightness = 0;
+
+		pr_debug("set brightness to %lu\n", brightness);
+		bd->props.brightness = brightness;
+		rc = backlight_update_status(bd);
 	}
 	mutex_unlock(&bd->ops_lock);
 
 	backlight_generate_event(bd, BACKLIGHT_UPDATE_SYSFS);
+	blocking_notifier_call_chain(&bl_level_notifier,
+				     brightness, bd);
 
 	return rc;
 }
@@ -204,16 +208,37 @@ static ssize_t brightness_store(struct device *dev,
 	if (rc)
 		return rc;
 
-	bd->usr_brightness_req = brightness;
-	brightness = (brightness <= bd->thermal_brightness_limit) ?
-				bd->usr_brightness_req :
-				bd->thermal_brightness_limit;
-
 	rc = backlight_device_set_brightness(bd, brightness);
 
 	return rc ? rc : count;
 }
 static DEVICE_ATTR_RW(brightness);
+
+
+int brightness_hbm_status = 2;
+static ssize_t brightness_hbm_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int rc;
+	struct backlight_device *bd = to_backlight_device(dev);
+
+	sscanf(buf, "%d", &brightness_hbm_status);
+	pr_debug(" the brightness_hbm_status:%d !\n", brightness_hbm_status);
+
+	if (1 == brightness_hbm_status) {
+		rc = backlight_device_set_brightness(bd, 255);
+	} else {
+		rc = backlight_device_set_brightness(bd, 255);
+	}
+	return rc ? rc : count;
+}
+static ssize_t brightness_hbm_show(struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	return sprintf(buf, "%d\n", brightness_hbm_status);
+}
+static DEVICE_ATTR(brightness_hbm, 0644, brightness_hbm_show, brightness_hbm_store);
+
 
 static ssize_t type_show(struct device *dev, struct device_attribute *attr,
 		char *buf)
@@ -224,6 +249,31 @@ static ssize_t type_show(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_RO(type);
 
+static ssize_t max_brightness_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int rc;
+	unsigned long maxbrightness;
+	struct backlight_device *bd = to_backlight_device(dev);
+
+	rc = kstrtoul(buf, 0, &maxbrightness);
+	if (rc)
+		return rc;
+
+	mutex_lock(&bd->ops_lock);
+	if (bd->ops) {
+		pr_debug("set max_brightness to %lu\n", maxbrightness);
+		bd->props.max_brightness = maxbrightness;
+		if (bd->props.brightness > maxbrightness) {
+			bd->props.brightness = maxbrightness;
+			// backlight_update_status(bd);
+		}
+	}
+	mutex_unlock(&bd->ops_lock);
+
+	return count;
+}
+
 static ssize_t max_brightness_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -231,7 +281,7 @@ static ssize_t max_brightness_show(struct device *dev,
 
 	return sprintf(buf, "%d\n", bd->props.max_brightness);
 }
-static DEVICE_ATTR_RO(max_brightness);
+static DEVICE_ATTR_RW(max_brightness);
 
 static ssize_t actual_brightness_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -294,6 +344,7 @@ static void bl_device_release(struct device *dev)
 static struct attribute *bl_device_attrs[] = {
 	&dev_attr_bl_power.attr,
 	&dev_attr_brightness.attr,
+	&dev_attr_brightness_hbm.attr,
 	&dev_attr_actual_brightness.attr,
 	&dev_attr_max_brightness.attr,
 	&dev_attr_type.attr,
@@ -319,63 +370,6 @@ void backlight_force_update(struct backlight_device *bd,
 	backlight_generate_event(bd, reason);
 }
 EXPORT_SYMBOL(backlight_force_update);
-
-static int bd_cdev_get_max_brightness(struct thermal_cooling_device *cdev,
-					unsigned long *state)
-{
-	struct backlight_device *bd = (struct backlight_device *)cdev->devdata;
-
-	*state = bd->props.max_brightness;
-
-	return 0;
-}
-
-static int bd_cdev_get_cur_brightness(struct thermal_cooling_device *cdev,
-					unsigned long *state)
-{
-	struct backlight_device *bd = (struct backlight_device *)cdev->devdata;
-
-	*state = bd->props.max_brightness - bd->thermal_brightness_limit;
-
-	return 0;
-}
-
-static int bd_cdev_set_cur_brightness(struct thermal_cooling_device *cdev,
-					unsigned long state)
-{
-	struct backlight_device *bd = (struct backlight_device *)cdev->devdata;
-	int brightness_lvl;
-
-	brightness_lvl = bd->props.max_brightness - state;
-	if (brightness_lvl == bd->thermal_brightness_limit)
-		return 0;
-
-	bd->thermal_brightness_limit = brightness_lvl;
-	brightness_lvl = (bd->usr_brightness_req
-				<= bd->thermal_brightness_limit) ?
-				bd->usr_brightness_req :
-				bd->thermal_brightness_limit;
-	backlight_device_set_brightness(bd, brightness_lvl);
-
-	return 0;
-}
-
-static struct thermal_cooling_device_ops bd_cdev_ops = {
-	.get_max_state = bd_cdev_get_max_brightness,
-	.get_cur_state = bd_cdev_get_cur_brightness,
-	.set_cur_state = bd_cdev_set_cur_brightness,
-};
-
-static void backlight_cdev_register(struct device *parent,
-				    struct backlight_device *bd)
-{
-	if (of_find_property(parent->of_node, "#cooling-cells", NULL)) {
-		bd->cdev = thermal_of_cooling_device_register(parent->of_node,
-				(char *)dev_name(&bd->dev), bd, &bd_cdev_ops);
-		if (!bd->cdev)
-			pr_err("Cooling device register failed\n");
-	}
-}
 
 /**
  * backlight_device_register - create and register a new object of
@@ -420,8 +414,6 @@ struct backlight_device *backlight_device_register(const char *name,
 			WARN(1, "%s: invalid backlight type", name);
 			new_bd->props.type = BACKLIGHT_RAW;
 		}
-		new_bd->thermal_brightness_limit = props->max_brightness;
-		new_bd->usr_brightness_req = props->brightness;
 	} else {
 		new_bd->props.type = BACKLIGHT_RAW;
 	}
@@ -438,7 +430,6 @@ struct backlight_device *backlight_device_register(const char *name,
 		return ERR_PTR(rc);
 	}
 
-	backlight_cdev_register(parent, new_bd);
 	new_bd->ops = ops;
 
 #ifdef CONFIG_PMAC_BACKLIGHT
@@ -477,6 +468,27 @@ struct backlight_device *backlight_device_get_by_type(enum backlight_type type)
 }
 EXPORT_SYMBOL(backlight_device_get_by_type);
 
+int get_backlight_brightness(void)
+{
+	int bl = 0;
+	struct backlight_device *bd;
+
+	bd = backlight_device_get_by_type(BACKLIGHT_RAW);
+
+	if (IS_ERR_OR_NULL(bd)) {
+		return bl;
+	}
+
+	mutex_lock(&bd->ops_lock);
+	if (bd->ops && bd->ops->get_brightness)
+		bl = bd->ops->get_brightness(bd);
+	else
+		bl = bd->props.brightness;
+	mutex_unlock(&bd->ops_lock);
+
+	return bl;
+}
+EXPORT_SYMBOL(get_backlight_brightness);
 /**
  * backlight_device_unregister - unregisters a backlight device object.
  * @bd: the backlight device object to be unregistered and freed.
@@ -555,6 +567,34 @@ int backlight_unregister_notifier(struct notifier_block *nb)
 	return blocking_notifier_chain_unregister(&backlight_notifier, nb);
 }
 EXPORT_SYMBOL(backlight_unregister_notifier);
+
+/**
+ * backlight_level_notifier_register - get notified of backlight level changed
+ * @nb: notifier block with the notifier to call on backlight level changed
+ *
+ * @return 0 on success, otherwise a negative error code
+ *
+ * Register a notifier to get notified when backlight level has changed
+ */
+int backlight_level_notifier_register(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&bl_level_notifier, nb);
+}
+EXPORT_SYMBOL(backlight_level_notifier_register);
+
+/**
+ * backlight_level_notifier_unregister - unregister a backlight level notifier
+ * @nb: notifier block to unregister
+ *
+ * @return 0 on success, otherwise a negative error code
+ *
+ * Unregister a notifier to get notified when backlight level has changed
+ */
+int backlight_level_notifier_unregister(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&bl_level_notifier, nb);
+}
+EXPORT_SYMBOL(backlight_level_notifier_unregister);
 
 /**
  * devm_backlight_device_register - resource managed backlight_device_register()

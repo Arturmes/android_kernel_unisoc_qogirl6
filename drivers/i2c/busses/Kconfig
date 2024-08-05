@@ -844,16 +844,6 @@ config I2C_QUP
 	  This driver can also be built as a module.  If so, the module
 	  will be called i2c-qup.
 
-config I2C_QCOM_GENI
-        tristate "Qualcomm Technologies Inc.'s GENI based I2C controller"
-        depends on ARCH_QCOM
-        help
-          If you say yes to this option, support will be included for the
-          built-in I2C interface on the Qualcomm Technologies Inc.'s SoCs.
-
-          This driver can also be built as a module.  If so, the module
-          will be called i2c-qcom-geni.
-
 config I2C_RIIC
 	tristate "Renesas RIIC adapter"
 	depends on ARCH_RENESAS || COMPILE_TEST
@@ -931,7 +921,7 @@ config I2C_SIRF
 	  will be called i2c-sirf.
 
 config I2C_SPRD
-	bool "Spreadtrum I2C interface"
+	tristate "Spreadtrum I2C interface"
 	depends on I2C=y && ARCH_SPRD
 	help
 	  If you say yes to this option, support will be included for the
@@ -1105,13 +1095,34 @@ config I2C_RCAR
 	depends on HAS_DMA
 	depends on ARCH_RENESAS || COMPILE_TEST
 	select I2C_SLAVE
-	select RESET_CONTROLLER if ARCH_RCAR_GEN3
 	help
 	  If you say yes to this option, support will be included for the
 	  R-Car I2C controller.
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called i2c-rcar.
+
+config I2C_SPRD_HW
+	tristate "SPRD I2C Driver (New I2C IP r9p0 support hw channel mode)"
+	default n
+	help
+	  If you say yes to this option, support will be included for the
+	  Spreadtrum I2C controller. This driver only support I2C IP version
+	  after R9P0.
+
+	  This driver can also be built as a module. If so, the module will be
+	  called i2c-sprd-hw.
+
+config I2C_SPRD_HW_V2
+	tristate "SPRD I2C Driver (New I2C IP r10p0 support hw channel mode)"
+	default n
+	help
+	  If you say yes to this option, support will be included for the
+	  Spreadtrum I2C controller. This driver only support I2C IP version
+	  after R10P0.
+
+	  This driver can also be built as a module. If so, the module will be
+	  called i2c-sprd-hw-v2.
 
 comment "External I2C/SMBus adapter drivers"
 
@@ -1328,17 +1339,6 @@ config I2C_OPAL
 
 	  This driver can also be built as a module. If so, the module will be
 	  called as i2c-opal.
-
-config I2C_MSM_V2
-        tristate "I2C_MSM_V2"
-        depends on ARCH_QCOM
-        help
-          If you say yes to this option, support will be included for the
-          built-in I2C interface and its DMA engine on the MSM family
-          processors.
-
-          This driver can also be built as a module.  If so, the module
-          will be called i2c-msm-v2.
 
 config I2C_ZX2967
 	tristate "ZTE ZX2967 I2C support"

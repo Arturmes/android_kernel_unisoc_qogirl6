@@ -5649,10 +5649,24 @@ T:	git git://git.kernel.org/pub/scm/linux/kernel/git/tytso/fscrypt.git
 S:	Supported
 F:	fs/crypto/
 F:	include/linux/fscrypt*.h
+F:	include/uapi/linux/fscrypt.h
+F:	Documentation/filesystems/fscrypt.rst
 
 FUJITSU FR-V (FRV) PORT
 S:	Orphan
 F:	arch/frv/
+
+FSVERITY: READ-ONLY FILE-BASED AUTHENTICITY PROTECTION
+M:	Eric Biggers <ebiggers@kernel.org>
+M:	Theodore Y. Ts'o <tytso@mit.edu>
+L:	linux-fscrypt@vger.kernel.org
+Q:	https://patchwork.kernel.org/project/linux-fscrypt/list/
+T:	git git://git.kernel.org/pub/scm/fs/fscrypt/fscrypt.git fsverity
+S:	Supported
+F:	fs/verity/
+F:	include/linux/fsverity.h
+F:	include/uapi/linux/fsverity.h
+F:	Documentation/filesystems/fsverity.rst
 
 FUJITSU LAPTOP EXTRAS
 M:	Jonathan Woithe <jwoithe@just42.net>
@@ -5832,6 +5846,14 @@ S:	Odd Fixes
 F:	Documentation/isdn/README.gigaset
 F:	drivers/isdn/gigaset/
 F:	include/uapi/linux/gigaset_dev.h
+
+GNSS SUBSYSTEM
+M:	Johan Hovold <johan@kernel.org>
+S:	Maintained
+F:	Documentation/ABI/testing/sysfs-class-gnss
+F:	Documentation/devicetree/bindings/gnss/
+F:	drivers/gnss/
+F:	include/linux/gnss.h
 
 GO7007 MPEG CODEC
 M:	Hans Verkuil <hans.verkuil@cisco.com>
@@ -7506,6 +7528,20 @@ S:	Maintained
 F:	tools/testing/selftests/
 F:	Documentation/dev-tools/kselftest*
 
+KERNEL UNIT TESTING FRAMEWORK (KUnit)
+M:	Brendan Higgins <brendanhiggins@google.com>
+L:	linux-kernel@vger.kernel.org
+S:	Maintained
+F:	Documentation/test/
+F:	arch/um/include/asm/io-mock-shared.h
+F:	arch/um/include/asm/io-mock.h
+F:	arch/um/kernel/io-mock.c
+F:	drivers/base/platform-mock.c
+F:	include/linux/platform_device_mock.h
+F:	include/test/
+F:	test/
+F:	tools/testing/kunit/
+
 KERNEL USERMODE HELPER
 M:	"Luis R. Rodriguez" <mcgrof@kernel.org>
 L:	linux-kernel@vger.kernel.org
@@ -7863,6 +7899,13 @@ L:	linux-nvdimm@lists.01.org
 Q:	https://patchwork.kernel.org/project/linux-nvdimm/list/
 S:	Supported
 F:	drivers/nvdimm/pmem*
+
+LIBNVDIMM: DEVICETREE BINDINGS
+M:	Oliver O'Halloran <oohall@gmail.com>
+L:	linux-nvdimm@lists.01.org
+Q:	https://patchwork.kernel.org/project/linux-nvdimm/list/
+S:	Supported
+F:	drivers/nvdimm/of_pmem.c
 
 LIBNVDIMM: NON-VOLATILE MEMORY DEVICE SUBSYSTEM
 M:	Dan Williams <dan.j.williams@intel.com>
@@ -9561,6 +9604,12 @@ W:	http://www.netlab.is.tsukuba.ac.jp/~yokota/izumi/ninja/
 S:	Maintained
 F:	Documentation/scsi/NinjaSCSI.txt
 F:	drivers/scsi/nsp32*
+
+NINTENDO HID DRIVER
+M:	Daniel J. Ogorchock <djogorchock@gmail.com>
+L:	linux-input@vger.kernel.org
+S:	Maintained
+F:	drivers/hid/hid-nintendo*
 
 NIOS2 ARCHITECTURE
 M:	Ley Foon Tan <lftan@altera.com>
@@ -14041,7 +14090,13 @@ F:	drivers/usb/
 F:	include/linux/usb.h
 F:	include/linux/usb/
 
-USB TYPEC SUBSYSTEM
+USB TYPEC PI3USB30532 MUX DRIVER
+M:	Hans de Goede <hdegoede@redhat.com>
+L:	linux-usb@vger.kernel.org
+S:	Maintained
+F:	drivers/usb/typec/mux/pi3usb30532.c
+
+USB TYPEC CLASS
 M:	Heikki Krogerus <heikki.krogerus@linux.intel.com>
 L:	linux-usb@vger.kernel.org
 S:	Maintained
@@ -14049,6 +14104,21 @@ F:	Documentation/ABI/testing/sysfs-class-typec
 F:	Documentation/usb/typec.rst
 F:	drivers/usb/typec/
 F:	include/linux/usb/typec.h
+
+USB TYPEC BUS FOR ALTERNATE MODES
+M:	Heikki Krogerus <heikki.krogerus@linux.intel.com>
+L:	linux-usb@vger.kernel.org
+S:	Maintained
+F:	Documentation/ABI/testing/sysfs-bus-typec
+F:	Documentation/driver-api/usb/typec_bus.rst
+F:	drivers/usb/typec/altmodes/
+F:	include/linux/usb/typec_altmode.h
+
+USB TYPEC PORT CONTROLLER DRIVERS
+M:	Guenter Roeck <linux@roeck-us.net>
+L:	linux-usb@vger.kernel.org
+S:	Maintained
+F:	drivers/usb/typec/tcpm/
 
 USB UHCI DRIVER
 M:	Alan Stern <stern@rowland.harvard.edu>
@@ -14889,7 +14959,7 @@ T:	hg https://linuxtv.org/hg/v4l-dvb
 S:	Odd Fixes
 F:	drivers/media/pci/zoran/
 
-ZRAM COMPRESSED RAM BLOCK DEVICE DRVIER
+ZRAM COMPRESSED RAM BLOCK DEVICE DRIVER
 M:	Minchan Kim <minchan@kernel.org>
 M:	Nitin Gupta <ngupta@vflare.org>
 R:	Sergey Senozhatsky <sergey.senozhatsky.work@gmail.com>

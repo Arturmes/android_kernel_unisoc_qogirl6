@@ -13,7 +13,6 @@
 #include <linux/cred.h>
 #include <linux/file.h>
 #include <linux/fdtable.h>
-#include <linux/fs_struct.h>
 #include <linux/workqueue.h>
 #include <linux/security.h>
 #include <linux/mount.h>
@@ -70,14 +69,6 @@ static int call_usermodehelper_exec_async(void *data)
 	spin_lock_irq(&current->sighand->siglock);
 	flush_signal_handlers(current, 1);
 	spin_unlock_irq(&current->sighand->siglock);
-
-	/*
-	 * Initial kernel threads share ther FS with init, in order to
-	 * get the init root directory. But we've now created a new
-	 * thread that is going to execve a user process and has its own
-	 * 'struct fs_struct'. Reset umask to the default.
-	 */
-	current->fs->umask = 0022;
 
 	/*
 	 * Our parent (unbound workqueue) runs with elevated scheduling
@@ -386,11 +377,11 @@ struct subprocess_info *call_usermodehelper_setup(const char *path, char **argv,
 
 	INIT_WORK(&sub_info->work, call_usermodehelper_exec_work);
 
-#ifdef CONFIG_STATIC_USERMODEHELPER
-	sub_info->path = CONFIG_STATIC_USERMODEHELPER_PATH;
-#else
+//#ifdef CONFIG_STATIC_USERMODEHELPER
+	//sub_info->path = CONFIG_STATIC_USERMODEHELPER_PATH;
+//#else
 	sub_info->path = path;
-#endif
+//#endif
 	sub_info->argv = argv;
 	sub_info->envp = envp;
 

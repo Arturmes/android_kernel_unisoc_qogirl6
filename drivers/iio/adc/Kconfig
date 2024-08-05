@@ -594,48 +594,6 @@ config QCOM_SPMI_VADC
 	  To compile this driver as a module, choose M here: the module will
 	  be called qcom-spmi-vadc.
 
-config QCOM_SPMI_ADC5
-	tristate "Qualcomm Technologies Inc. SPMI PMIC5 ADC"
-	depends on SPMI
-	select REGMAP_SPMI
-	select QCOM_VADC_COMMON
-	help
-	  This is the IIO Voltage PMIC5 ADC driver for Qualcomm Technologies Inc.
-
-	  The driver supports multiple channels read. The ADC is a 15-bit
-	  sigma-delta ADC. The hardware supports calibrated results for
-	  conversion requests and clients include reading voltage phone
-	  power, on board system thermistors connected to the PMIC ADC,
-	  PMIC die temperature, charger temperature, battery current, USB voltage
-	  input, voltage signals connected to supported PMIC GPIO inputs.
-
-	  To compile this driver as a module, choose M here: the module will
-	  be called qcom-spmi-adc5.
-
-config QCOM_TADC
-	tristate "Qualcomm Technologies, Inc. TADC driver"
-	depends on MFD_I2C_PMIC
-	help
-	  Say yes here to support the Qualcomm Technologies, Inc. telemetry ADC.
-	  The TADC provides battery temperature, skin temperature,
-	  die temperature, battery voltage, battery current, input voltage,
-	  input current, and OTG current.
-
-config QCOM_RRADC
-	tristate "Qualcomm Technologies Inc. PMIC Round robin ADC"
-	depends on SPMI
-	select REGMAP_SPMI
-	help
-	  This is the PMIC Round Robin ADC driver.
-
-	  The driver supports multiple channels read used for telemetry
-	  and supports clients to read batt_id, batt_therm, PMIC die
-	  temperature, USB_IN and DC_IN voltage and current.
-	  The RRADC is a 10-bit ADC.
-
-	  To compile this driver as a module, choose M here: the module will
-	  be called qcom-rradc.
-
 config RCAR_GYRO_ADC
 	tristate "Renesas R-Car GyroADC driver"
 	depends on ARCH_RCAR_GEN2 || (ARM && COMPILE_TEST)
@@ -659,6 +617,16 @@ config ROCKCHIP_SARADC
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called rockchip_saradc.
+
+config SC27XX_ADC
+	tristate "Spreadtrum SC27xx series PMICs ADC"
+	depends on MFD_SC27XX_PMIC || MFD_UMP96XX_PMIC || COMPILE_TEST
+	help
+	  Say yes here to build support for the integrated ADC inside the
+	  Spreadtrum SC27xx series PMICs.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called sc27xx_adc.
 
 config SPEAR_ADC
 	tristate "ST SPEAr ADC"
@@ -932,5 +900,11 @@ config XILINX_XADC
 
 	  The driver can also be build as a module. If so, the module will be called
 	  xilinx-xadc.
+
+config SPRD_ADC_GCOV
+	bool "open gcov for adc"
+	depends on GCOV_PROFILE_MODULES
+	help
+	  Say Y here to enable gcov in adc.
 
 endmenu

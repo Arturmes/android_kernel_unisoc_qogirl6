@@ -671,6 +671,8 @@ void migrate_page_states(struct page *newpage, struct page *page)
 		SetPageActive(newpage);
 	} else if (TestClearPageUnevictable(page))
 		SetPageUnevictable(newpage);
+	if (PageWorkingset(page))
+		SetPageWorkingset(newpage);
 	if (PageChecked(page))
 		SetPageChecked(newpage);
 	if (PageMappedToDisk(page))
@@ -684,6 +686,11 @@ void migrate_page_states(struct page *newpage, struct page *page)
 		set_page_young(newpage);
 	if (page_is_idle(page))
 		set_page_idle(newpage);
+
+	if (PageProtect(page)) {
+		SetPageProtect(newpage);
+		set_page_protect_num(newpage, get_page_protect_num(page));
+	}
 
 	/*
 	 * Copy NUMA information to the new page, to prevent over-eager
@@ -1410,8 +1417,6 @@ int migrate_pages(struct list_head *from, new_page_t get_new_page,
 	int swapwrite = current->flags & PF_SWAPWRITE;
 	int rc;
 
-	trace_mm_migrate_pages_start(mode, reason);
-
 	if (!swapwrite)
 		current->flags |= PF_SWAPWRITE;
 
@@ -1651,7 +1656,7 @@ static int do_pages_move(struct mm_struct *mm, nodemask_t task_nodes,
 			err = -EFAULT;
 			if (get_user(p, pages + j + chunk_start))
 				goto out_pm;
-			pm[j].addr = (unsigned long) p;
+			pm[j].addr = (unsigned long)untagged_addr(p);
 
 			if (get_user(node, nodes + j + chunk_start))
 				goto out_pm;
@@ -2588,7 +2593,7 @@ static void migrate_vma_unmap(struct migrate_vma *migrate)
 			continue;
 
 		if (page_mapped(page)) {
-			try_to_unmap(page, flags);
+			try_to_unmap(page, flags, NULL);
 			if (page_mapped(page))
 				goto restore;
 		}

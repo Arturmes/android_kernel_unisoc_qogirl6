@@ -32,11 +32,6 @@ struct cpufreq_policy;
 
 typedef int (*get_static_t)(cpumask_t *cpumask, int interval,
 			    unsigned long voltage, u32 *power);
-typedef int (*plat_mitig_t)(int cpu, u32 clip_freq);
-
-struct cpu_cooling_ops {
-	plat_mitig_t ceil_limit, floor_limit;
-};
 
 #ifdef CONFIG_CPU_THERMAL
 /**
@@ -49,10 +44,6 @@ cpufreq_cooling_register(struct cpufreq_policy *policy);
 struct thermal_cooling_device *
 cpufreq_power_cooling_register(struct cpufreq_policy *policy,
 			       u32 capacitance, get_static_t plat_static_func);
-
-struct thermal_cooling_device *
-cpufreq_platform_cooling_register(const struct cpumask *clip_cpus,
-					struct cpu_cooling_ops *ops);
 
 /**
  * of_cpufreq_cooling_register - create cpufreq cooling device based on DT.
@@ -93,9 +84,6 @@ of_cpufreq_power_cooling_register(struct device_node *np,
  */
 void cpufreq_cooling_unregister(struct thermal_cooling_device *cdev);
 
-extern void cpu_cooling_max_level_notifier_register(struct notifier_block *n);
-extern void cpu_cooling_max_level_notifier_unregister(struct notifier_block *n);
-extern const struct cpumask *cpu_cooling_get_max_level_cpumask(void);
 #else /* !CONFIG_CPU_THERMAL */
 static inline struct thermal_cooling_device *
 cpufreq_cooling_register(struct cpufreq_policy *policy)
@@ -125,32 +113,10 @@ of_cpufreq_power_cooling_register(struct device_node *np,
 	return NULL;
 }
 
-static inline struct thermal_cooling_device *
-cpufreq_platform_cooling_register(const struct cpumask *clip_cpus,
-					struct cpu_cooling_ops *ops)
-{
-	return NULL;
-}
-
 static inline
 void cpufreq_cooling_unregister(struct thermal_cooling_device *cdev)
 {
 	return;
-}
-
-static inline
-void cpu_cooling_max_level_notifier_register(struct notifier_block *n)
-{
-}
-
-static inline
-void cpu_cooling_max_level_notifier_unregister(struct notifier_block *n)
-{
-}
-
-static inline const struct cpumask *cpu_cooling_get_max_level_cpumask(void)
-{
-	return cpu_none_mask;
 }
 #endif	/* CONFIG_CPU_THERMAL */
 

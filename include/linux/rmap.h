@@ -179,8 +179,8 @@ void page_add_anon_rmap(struct page *, struct vm_area_struct *,
 		unsigned long, bool);
 void do_page_add_anon_rmap(struct page *, struct vm_area_struct *,
 			   unsigned long, int);
-void __page_add_new_anon_rmap(struct page *page, struct vm_area_struct *vma,
-			      unsigned long address, bool compound);
+void __page_add_new_anon_rmap(struct page *, struct vm_area_struct *,
+			      unsigned long, bool);
 static inline void page_add_new_anon_rmap(struct page *page,
 					  struct vm_area_struct *vma,
 					  unsigned long address, bool compound)
@@ -188,7 +188,6 @@ static inline void page_add_new_anon_rmap(struct page *page,
 	VM_BUG_ON_VMA(address < vma->vm_start || address >= vma->vm_end, vma);
 	__page_add_new_anon_rmap(page, vma, address, compound);
 }
-
 void page_add_file_rmap(struct page *, bool);
 void page_remove_rmap(struct page *, bool);
 
@@ -208,8 +207,8 @@ static inline void page_dup_rmap(struct page *page, bool compound)
 int page_referenced(struct page *, int is_locked,
 			struct mem_cgroup *memcg, unsigned long *vm_flags);
 
-bool try_to_unmap(struct page *page, enum ttu_flags flags,
-				struct vm_area_struct *vma);
+bool try_to_unmap(struct page *, enum ttu_flags flags,
+			struct vm_area_struct *vma);
 
 /* Avoid racy checks */
 #define PVMW_SYNC		(1 << 0)

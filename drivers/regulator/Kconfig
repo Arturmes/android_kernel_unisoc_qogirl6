@@ -54,16 +54,6 @@ config REGULATOR_USERSPACE_CONSUMER
 
 	  If unsure, say no.
 
-config REGULATOR_PROXY_CONSUMER
-	bool "Boot time regulator proxy consumer support"
-	help
-	  This driver provides support for boot time regulator proxy requests.
-	  It can enforce a specified voltage range, set a minimum current,
-	  and/or keep a regulator enabled.  It is needed in circumstances where
-	  reducing one or more of these three quantities will cause hardware to
-	  stop working if performed before the driver managing the hardware has
-	  probed.
-
 config REGULATOR_88PM800
 	tristate "Marvell 88PM800 Power regulators"
 	depends on MFD_88PM800
@@ -263,6 +253,14 @@ config REGULATOR_DA9211
 	  The DA9211/DA9212/DA9213/DA9214/DA9215 is a multi-phase synchronous
 	  step down converter 12A or 16A DC-DC Buck controlled through an I2C
 	  interface.
+
+config REGULATOR_SC2703
+	tristate "Powerventure Semiconductor SC2703 regulator"
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  Say y here to support the BUCK regulator found on
+	  Powerventure Semiconductor SC2703L/P.
 
 config REGULATOR_DBX500_PRCMU
 	bool
@@ -695,44 +693,6 @@ config REGULATOR_QCOM_SPMI
 	  Qualcomm SPMI PMICs as a module. The module will be named
 	  "qcom_spmi-regulator".
 
-config REGULATOR_QPNP_AMOLED
-        tristate "Qualcomm Technologies, Inc. QPNP AMOLED support"
-        depends on SPMI
-        help
-          Supports the OLEDB/AB/IBB module in the Qualcomm Technologies, Inc.
-          QPNP PMICs. Exposes regulators to control the triple power supply
-          positive, negative and bias for the AMOLED display panel. It also
-          allows configurability for the various bias-voltage parameters.
-
-config REGULATOR_QPNP_LABIBB
-        tristate "Qualcomm Technologies, Inc. QPNP LAB/IBB regulator support"
-        depends on SPMI
-        help
-          This driver supports voltage regulators in Qualcomm Technologies, Inc.
-          PMIC chips which comply with QPNP LAB/IBB regulators. QPNP LAB and IBB
-          are SPMI based PMIC implementations. LAB regulator can be used as a
-          regular positive boost regulator. IBB can be used as a regular
-          negative boost regulator. LAB/IBB regulators can also be used
-          together for LCD or AMOLED.
-
-config REGULATOR_QPNP_LCDB
-        tristate "Qualcomm Technologies, Inc. QPNP LCDB support"
-        depends on SPMI
-        help
-          Supports the LCDB module in the Qualcomm Technologies, Inc.
-          QPNP PMICs. Exposes regulators to control the positive and
-          negative voltage bias for the LCD display panel. It also
-          allows configurability for the various bias-voltage parameters.
-
-config REGULATOR_QPNP_OLEDB
-        tristate "Qualcomm Technologies, Inc. QPNP OLEDB regulator support"
-        depends on SPMI
-        help
-          This driver supports the OLEDB (AVDD bias) signal for AMOLED panel in
-          Qualcomm Technologies, Inc. QPNP PMICs. It exposes the OLED voltage
-          configuration via the regulator framework. The configurable range of
-          this bias is 5 V to 8.1 V.
-
 config REGULATOR_RC5T583
 	tristate "RICOH RC5T583 Power regulators"
 	depends on MFD_RC5T583
@@ -791,6 +751,54 @@ config REGULATOR_S5M8767
 	 This driver supports a Samsung S5M8767A voltage output regulator
 	 via I2C bus. S5M8767A have 9 Bucks and 28 LDOs output and
 	 supports DVS mode with 8bits of output voltage control.
+
+config REGULATOR_SC2731
+	tristate "Spreadtrum SC2731 power regulator driver"
+	depends on MFD_SC27XX_PMIC || COMPILE_TEST
+	help
+	  This driver provides support for the voltage regulators on the
+	  SC2731 PMIC.
+
+config REGULATOR_SC2720
+	tristate "Spreadtrum SC2720 power regulator driver"
+	depends on MFD_SC27XX_PMIC || COMPILE_TEST
+	help
+	  This driver provides support for the voltage regulators on the
+	  SC2720 PMIC.
+
+config REGULATOR_SC2721
+	tristate "Spreadtrum SC2721 power regulator driver"
+	depends on MFD_SC27XX_PMIC || COMPILE_TEST
+	help
+	  This driver provides support for the voltage regulators on the
+	  SC2721 PMIC.
+
+config REGULATOR_SC2730
+	tristate "Spreadtrum SC2730 power regulator driver"
+	depends on MFD_SC27XX_PMIC || COMPILE_TEST
+	help
+	  This driver provides support for the voltage regulators on the
+	  SC2730 PMIC.
+
+config REGULATOR_UMP9620
+	tristate "Unisoc UMP9620 power regulator driver"
+	depends on MFD_SC27XX_PMIC || MFD_UMP96XX_PMIC || COMPILE_TEST
+	help
+	  This driver provides support for the voltage regulators on the
+	  UMP9620 PMIC.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called ump9620-regulator.
+
+config REGULATOR_UMP9621
+	tristate "Unisoc UMP9621 power regulator driver"
+	depends on MFD_SC27XX_PMIC || MFD_UMP96XX_PMIC || COMPILE_TEST
+	help
+	  This driver provides support for the voltage regulators on the
+	  UMP9621 PMIC.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called ump9621-regulator.
 
 config REGULATOR_SKY81452
 	tristate "Skyworks Solutions SKY81452 voltage regulator"
@@ -1005,75 +1013,6 @@ config REGULATOR_WM8994
 	help
 	  This driver provides support for the voltage regulators on the
 	  WM8994 CODEC.
-
-config REGULATOR_CPR
-	bool "RBCPR regulator driver for APC"
-	depends on OF
-	help
-	  Compile in RBCPR (RapidBridge Core Power Reduction) driver to support
-	  corner vote for APC power rail. The driver takes PTE process voltage
-	  suggestions in efuse as initial settings. It converts corner vote
-	  to voltage value before writing to a voltage regulator API, such as
-	  that provided by spm-regulator driver.
-
-config REGULATOR_MEM_ACC
-	tristate "QTI Memory accelerator regulator driver"
-	help
-	  Say y here to enable the memory accelerator driver for Qualcomm
-	  Technologies, Inc. (QTI) chips. The accelerator controls delays
-	  applied for memory accesses.  This driver configures the power-mode
-	  (corner) for the memory accelerator.
-
-config REGULATOR_REFGEN
-	tristate "Qualcomm Technologies, Inc. REFGEN regulator driver"
-	depends on OF
-	help
-	  This driver supports control of the REFGEN reference bias generator
-	  block found on some Qualcomm Technologies Inc. SoCs.  A REFGEN
-	  it used by various PHY blocks found inside of the SoC.  It supports
-	  enable/disable control.
-
-config REGULATOR_RPMH
-	tristate "Qualcomm Technologies, Inc. RPMh regulator driver"
-	depends on OF
-	depends on QTI_RPMH_API
-	help
-	  This driver supports control of PMIC regulators via the RPMh hardware
-	  block found on Qualcomm Technologies Inc. SoCs.  RPMh regulator
-	  control allows for voting on regulator state between multiple
-	  processors within the SoC.
-
-config REGULATOR_RPM_SMD
-	bool "RPM SMD regulator driver"
-	depends on OF
-	depends on MSM_RPM_SMD
-	help
-	  Compile in support for the RPM SMD regulator driver which is used for
-	  setting voltages and other parameters of the various power rails
-	  supplied by some Qualcomm PMICs. The RPM SMD regulator driver should
-	  be used on systems which contain an RPM which communicates with the
-	  application processor over SMD.
-
-config REGULATOR_SPM
-	bool "SPM regulator driver"
-	depends on SPMI
-	help
-	  Enable support for the SPM regulator driver which is used for
-	  setting voltages of processor supply regulators via the SPM module
-	  found inside chips of Qualcomm Technologies Inc. The SPM regulator
-	  driver can be used on QTI SoCs where the APSS processor cores are
-	  supplied by their own PMIC regulator.
-
-config REGULATOR_STUB
-	tristate "Stub Regulator"
-	help
-	  This driver adds stub regulator support. The driver is absent of any
-	  real hardware based implementation. It allows for clients to register
-	  their regulator device constraints and use all of the standard
-	  regulator interfaces. This is useful for bringing up new platforms
-	  when the real hardware based implementation may not be yet available.
-	  Clients can use the real regulator device names with proper
-	  constraint checking while the real driver is being developed.
 
 endif
 

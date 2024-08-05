@@ -444,16 +444,6 @@ config PXA_DMA
 	  16 to 32 channels for peripheral to memory or memory to memory
 	  transfers.
 
-config QCOM_SPS_DMA
-	tristate "Qualcomm technologies inc DMA driver for sps-BAM"
-	depends on ARCH_QCOM
-	select DMA_ENGINE
-	help
-	  Enable support for Qualcomm technologies inc, BAM DMA engine.
-	  This DMA-engine-driver is a wrapper of the sps-BAM library. DMA
-	  engine callbacks are implemented using the sps-BAM functionality
-	  to access HW.
-
 config SIRF_DMA
 	tristate "CSR SiRFprimaII/SiRFmarco DMA support"
 	depends on ARCH_SIRF
@@ -492,6 +482,14 @@ config STM32_DMA
 	  STM32 MCUs.
 	  If you have a board based on such a MCU and wish to use DMA say Y
 	  here.
+
+config SPRD_DMA
+	tristate "Spreadtrum DMA support"
+	depends on ARCH_SPRD || COMPILE_TEST
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	help
+	  Enable support for the on-chip DMA controller on Spreadtrum platform.
 
 config S3C24XX_DMAC
 	bool "Samsung S3C24XX DMA support"

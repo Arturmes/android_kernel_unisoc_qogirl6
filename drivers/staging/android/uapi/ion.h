@@ -83,6 +83,12 @@ struct ion_allocation_data {
 	__u32 unused;
 };
 
+struct ion_phy_data {
+	__u32 fd;
+	__u64 len;
+	__u64 addr;
+};
+
 #define MAX_HEAP_NAME			32
 
 /**
@@ -123,6 +129,7 @@ struct ion_heap_query {
  */
 #define ION_IOC_ALLOC		_IOWR(ION_IOC_MAGIC, 0, \
 				      struct ion_allocation_data)
+
 /**
  * DOC: ION_IOC_HEAP_QUERY - information about available heaps
  *
@@ -131,5 +138,11 @@ struct ion_heap_query {
  */
 #define ION_IOC_HEAP_QUERY     _IOWR(ION_IOC_MAGIC, 8, \
 					struct ion_heap_query)
+
+#define ION_IOC_PHY           _IOWR(ION_IOC_MAGIC, 9, \
+					struct ion_phy_data)
+
+#define ION_IOC_VERSION        _IOWR(ION_IOC_MAGIC, 10, \
+					struct  ion_allocation_data)
 
 #endif /* _UAPI_LINUX_ION_H */

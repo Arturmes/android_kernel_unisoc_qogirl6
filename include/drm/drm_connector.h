@@ -363,6 +363,12 @@ struct drm_connector_state {
 	 * upscaling, mostly used for built-in panels.
 	 */
 	unsigned int scaling_mode;
+
+	/**
+	 * @hdr_output_metadata:
+	 * DRM blob property for HDR output metadata
+	 */
+	struct drm_property_blob *hdr_output_metadata;
 };
 
 /**
@@ -699,20 +705,6 @@ struct drm_cmdline_mode {
  * @audio_latency: audio latency info from ELD, if found
  * @null_edid_counter: track sinks that give us all zeros for the EDID
  * @bad_edid_counter: track sinks that give us an EDID with invalid checksum
- * @pt_scan_info: PT scan info obtained from the VCDB of EDID
- * @it_scan_info: IT scan info obtained from the VCDB of EDID
- * @ce_scan_info: CE scan info obtained from the VCDB of EDID
- * @hdr_eotf: Electro optical transfer function obtained from HDR block
- * @hdr_metadata_type_one: Metadata type one obtained from HDR block
- * @hdr_max_luminance: desired max luminance obtained from HDR block
- * @hdr_avg_luminance: desired avg luminance obtained from HDR block
- * @hdr_min_luminance: desired min luminance obtained from HDR block
- * @hdr_supported: does the sink support HDR content
- * @max_tmds_char: indicates the maximum TMDS Character Rate supported
- * @scdc_present: when set the sink supports SCDC functionality
- * @rr_capable: when set the sink is capable of initiating an SCDC read request
- * @supports_scramble: when set the sink supports less than 340Mcsc scrambling
- * @flags_3d: 3D view(s) supported by the sink, see drm_edid.h (DRM_EDID_3D_*)
  * @edid_corrupt: indicates whether the last read EDID was corrupt
  * @debugfs_entry: debugfs directory for this connector
  * @has_tile: is this connector connected to a tiled monitor
@@ -887,23 +879,6 @@ struct drm_connector {
 	int null_edid_counter; /* needed to workaround some HW bugs where we get all 0s */
 	unsigned bad_edid_counter;
 
-	u8 pt_scan_info;
-	u8 it_scan_info;
-	u8 ce_scan_info;
-	u32 hdr_eotf;
-	bool hdr_metadata_type_one;
-	u32 hdr_max_luminance;
-	u32 hdr_avg_luminance;
-	u32 hdr_min_luminance;
-	bool hdr_supported;
-
-	/* EDID bits HDMI 2.0 */
-	int max_tmds_char;	/* in Mcsc */
-	bool scdc_present;
-	bool rr_capable;
-	bool supports_scramble;
-	int flags_3d;
-
 	/* Flag for raw EDID header corruption - used in Displayport
 	 * compliance testing - * Displayport Link CTS Core 1.2 rev1.1 4.2.2.6
 	 */
@@ -936,6 +911,9 @@ struct drm_connector {
 	uint8_t num_h_tile, num_v_tile;
 	uint8_t tile_h_loc, tile_v_loc;
 	uint16_t tile_h_size, tile_v_size;
+
+	/** @hdr_sink_metadata: HDR Metadata Information read from sink */
+	struct hdr_sink_metadata hdr_sink_metadata;
 };
 
 #define obj_to_connector(x) container_of(x, struct drm_connector, base)
@@ -944,6 +922,7 @@ int drm_connector_init(struct drm_device *dev,
 		       struct drm_connector *connector,
 		       const struct drm_connector_funcs *funcs,
 		       int connector_type);
+void drm_connector_attach_edid_property(struct drm_connector *connector);
 int drm_connector_register(struct drm_connector *connector);
 void drm_connector_unregister(struct drm_connector *connector);
 int drm_mode_connector_attach_encoder(struct drm_connector *connector,

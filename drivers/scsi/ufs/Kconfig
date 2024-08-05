@@ -38,6 +38,7 @@ config SCSI_UFSHCD
 	select PM_DEVFREQ
 	select DEVFREQ_GOV_SIMPLE_ONDEMAND
 	select NLS
+	select RPMB
 	---help---
 	This selects the support for UFS devices in Linux, say Y and make
 	  sure that you know the name of your UFS host adapter (the card
@@ -101,37 +102,46 @@ config SCSI_UFS_QCOM
 	  Select this if you have UFS controller on QCOM chipset.
 	  If unsure, say N.
 
-config SCSI_UFS_QCOM_ICE
-	bool "QCOM specific hooks to Inline Crypto Engine for UFS driver"
-	depends on SCSI_UFS_QCOM && CRYPTO_DEV_QCOM_ICE
+config SCSI_UFS_SPRD
+	tristate "SPRD specific hooks to UFS controller platform driver"
+	depends on SCSI_UFSHCD_PLATFORM
 	help
-	  This selects the QCOM specific additions to support Inline Crypto
-	  Engine (ICE).
-	  ICE accelerates the crypto operations and maintains the high UFS
-	  performance.
+	  This selects the SPRD specific additions to UFSHCD platform driver.
+	  UFS host on SPRD needs some vendor specific configuration before
+	  accessing the hardware which includes PHY configuration and vendor
+	  specific registers.
 
-	  Select this if you have ICE supported for UFS on QCOM chipset.
+	  Select this if you have UFS controller on SPRD chipset.
 	  If unsure, say N.
 
+config SCSI_UFS_SPRD_QOGIRL6
+        tristate "SPRD QOGIRL6 specific hooks to UFS controller platform driver"
+        depends on SCSI_UFSHCD_PLATFORM
+        help
+          This selects the SPRD specific additions to UFSHCD platform driver.
+          UFS host on SPRD needs some vendor specific configuration before
+          accessing the hardware which includes PHY configuration and vendor
+          specific registers.
+          Select this if you have UFS controller on SPRD chipset.
+          If unsure, say N.
 
-config SCSI_UFS_TEST
-	tristate "Universal Flash Storage host controller driver unit-tests"
-	depends on SCSI_UFSHCD && IOSCHED_TEST
-	default m
-	---help---
-	This adds UFS Host controller unit-test framework.
-	The UFS unit-tests register as a block device test utility to
-	the test-iosched and will be initiated when the test-iosched will
-	be chosen to be the active I/O scheduler.
-
-config SCSI_UFSHCD_CMD_LOGGING
-	bool "Universal Flash Storage host controller driver layer command logging support"
-	depends on SCSI_UFSHCD
+config SCSI_UFS_CRYPTO
+	bool "UFS Crypto Engine Support"
+	depends on SCSI_UFSHCD && BLK_INLINE_ENCRYPTION
 	help
-	  This selects the UFS host controller driver layer command logging.
-	  UFS host controller driver layer command logging records all the
-	  command information sent from UFS host controller for debugging
-	  purpose.
+	  Enable Crypto Engine Support in UFS.
+	  Enabling this makes it possible for the kernel to use the crypto
+	  capabilities of the UFS device (if present) to perform crypto
+	  operations on data being transferred to/from the device.
 
-	  Select this if you want above mentioned debug information captured.
+config SCSI_UFS_SPRD_QOGIRN6PRO
+	tristate "SPRD specific hooks to dwc 1.70a UFS controller platform driver"
+	depends on SCSI_UFSHCD_PLATFORM
+	help
+	  This selects the SPRD specific additions to UFSHCD platform driver.
+	  UFS host on SPRD needs some vendor specific configuration before
+	  accessing the hardware which includes PHY configuration and vendor
+	  specific registers.
+
+	  Select this if you have UFS controller on SPRD chipset.
 	  If unsure, say N.

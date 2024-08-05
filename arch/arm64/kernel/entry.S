@@ -72,6 +72,10 @@
 #define BAD_FIQ		2
 #define BAD_ERROR	3
 
+// #ifdef CONFIG_SPRD_DEBUG
+#define STACK_KEEP_SIZE	0x100
+// #endif
+
 	.macro kernel_ventry, el, label, regsize = 64
 	.align 7
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
@@ -142,17 +146,18 @@ alternative_else_nop_endif
 	// to save/restore them if required.
 	.macro	apply_ssbd, state, targ, tmp1, tmp2
 #ifdef CONFIG_ARM64_SSBD
-	ldr	\tmp1, =ssbd_state
-	ldr	\tmp1, [\tmp1]
-	cmp	\tmp1, #ARM64_SSBD_KERNEL
-	b.ne	\targ
+alternative_cb	arm64_enable_wa2_handling
+	b	\targ
+alternative_cb_end
 	ldr_this_cpu	\tmp2, arm64_ssbd_callback_required, \tmp1
 	cbz	\tmp2, \targ
 	ldr	\tmp2, [tsk, #TSK_TI_FLAGS]
 	tbnz	\tmp2, #TIF_SSBD, \targ
 	mov	w0, #ARM_SMCCC_ARCH_WORKAROUND_2
 	mov	w1, #\state
-	smc	#0
+alternative_cb	arm64_update_smccc_conduit
+	nop					// Patched to SMC/HVC #0
+alternative_cb_end
 #endif
 	.endm
 
@@ -160,6 +165,11 @@ alternative_else_nop_endif
 	.if	\regsize == 32
 	mov	w0, w0				// zero upper 32 bits of x0
 	.endif
+// #ifdef CONFIG_SPRD_DEBUG
+	.if	\el != 0
+	sub	sp, sp, #STACK_KEEP_SIZE
+	.endif
+// #endif
 	stp	x0, x1, [sp, #16 * 0]
 	stp	x2, x3, [sp, #16 * 1]
 	stp	x4, x5, [sp, #16 * 2]
@@ -191,8 +201,16 @@ alternative_else_nop_endif
 1:
 
 	mov	x29, xzr			// fp pointed to user-space
+
+#ifdef CONFIG_SHADOW_CALL_STACK
+	ldr	x18, [tsk, #TSK_TI_SCS]		// Restore shadow call stack
+	str	xzr, [tsk, #TSK_TI_SCS]		// Limit visibility of saved SCS
+#endif
 	.else
 	add	x21, sp, #S_FRAME_SIZE
+// #ifdef CONFIG_SPRD_DEBUG
+	add	x21, x21, #STACK_KEEP_SIZE
+// #endif
 	get_thread_info tsk
 	/* Save the task's original addr_limit and set USER_DS */
 	ldr	x20, [tsk, #TSK_TI_ADDR_LIMIT]
@@ -280,6 +298,12 @@ alternative_else_nop_endif
 	ct_user_enter
 	.endif
 
+#ifdef CONFIG_SHADOW_CALL_STACK
+	.if	\el == 0
+	str	x18, [tsk, #TSK_TI_SCS]		// Save shadow call stack
+	.endif
+#endif
+
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
 	/*
 	 * Restore access to TTBR0_EL1. If returning to EL0, no need for SPSR
@@ -350,6 +374,11 @@ alternative_else_nop_endif
 	ldp	x26, x27, [sp, #16 * 13]
 	ldp	x28, x29, [sp, #16 * 14]
 	ldr	lr, [sp, #S_LR]
+// #ifdef CONFIG_SPRD_DEBUG
+	.if	\el != 0
+	add	sp, sp, #STACK_KEEP_SIZE
+	.endif
+// #endif
 	add	sp, sp, #S_FRAME_SIZE		// restore sp
 
 	.if	\el == 0
@@ -370,6 +399,9 @@ alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
 
 	.macro	irq_stack_entry
 	mov	x19, sp			// preserve the original sp
+#ifdef CONFIG_SHADOW_CALL_STACK
+	mov	x20, x18		// preserve the original shadow stack
+#endif
 
 	/*
 	 * Compare sp with the base of the task stack.
@@ -387,15 +419,24 @@ alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
 
 	/* switch to the irq stack */
 	mov	sp, x26
+
+#ifdef CONFIG_SHADOW_CALL_STACK
+	/* also switch to the irq shadow stack */
+	ldr_this_cpu x18, irq_shadow_call_stack_ptr, x26
+#endif
+
 9998:
 	.endm
 
 	/*
-	 * x19 should be preserved between irq_stack_entry and
-	 * irq_stack_exit.
+	 * The callee-saved regs (x19-x29) should be preserved between
+	 * irq_stack_entry and irq_stack_exit.
 	 */
 	.macro	irq_stack_exit
 	mov	sp, x19
+#ifdef CONFIG_SHADOW_CALL_STACK
+	mov	x18, x20
+#endif
 	.endm
 
 /*
@@ -579,7 +620,7 @@ el1_da:
 	tbnz	x23, #7, 1f			// PSR_I_BIT
 	enable_irq
 1:
-	clear_address_tag x0, x3
+	untagged_addr x0, x3
 	mov	x2, sp				// struct pt_regs
 	bl	do_mem_abort
 
@@ -743,7 +784,7 @@ el0_da:
 	// enable interrupts before calling the main handler
 	enable_dbg_and_irq
 	ct_user_exit
-	clear_address_tag x0, x26
+	untagged_addr x0, x26
 	mov	x1, x25
 	mov	x2, sp
 	bl	do_mem_abort
@@ -915,7 +956,7 @@ el0_svc:
 	mov	wsc_nr, #__NR_syscalls
 el0_svc_naked:					// compat entry point
 	stp	x0, xscno, [sp, #S_ORIG_X0]	// save the original x0 and syscall number
-	enable_dbg_and_irq
+	enable_dbg_err_irq
 	ct_user_exit 1
 
 	ldr	x16, [tsk, #TSK_TI_FLAGS]	// check for syscall hooks
@@ -1090,6 +1131,41 @@ ENTRY(sys_rt_sigreturn_wrapper)
 	b	sys_rt_sigreturn
 ENDPROC(sys_rt_sigreturn_wrapper)
 
+ENTRY(get_pt_regs)
+	stp x29, x30, [SP, #-0x30]!
+	stp x0, x1, [sp, #0x10]
+	stp x2, x3, [sp, #0x20]
+	stp x0, x1, [x0]
+	stp x2, x3, [x0, #0x10]!
+	stp x4, x5, [x0, #0x10]!
+	stp x6, x7, [x0, #0x10]!
+	stp x8, x9, [x0, #0x10]!
+	stp x10, x11, [x0, #0x10]!
+	stp x12, x13, [x0, #0x10]!
+	stp x14, x15, [x0, #0x10]!
+	stp x16, x17, [x0, #0x10]!
+	stp x18, x19, [x0, #0x10]!
+	stp x20, x21, [x0, #0x10]!
+	stp x22, x23, [x0, #0x10]!
+	stp x24, x25, [x0, #0x10]!
+	stp x26, x27, [x0, #0x10]!
+	stp x28, x29, [x0, #0x10]!
+	ldr x1, [sp] 					//get preceding sp
+	ldr x2, [x1, #0x8] 				//get preceding lr
+	str x2, [x0, #0x10]! 			//set lr
+	str x1, [x0, #0x8]! 			//set sp
+	mrs x1, NZCV 					//get pstate flag
+	mrs x2, DAIF
+	mrs x3, CurrentEL
+	orr x1, x1, x2
+	orr x1, x1, x3
+	stp lr, x1, [x0, #0x8]! 		//set pc,pstate
+	ldp x2, x3, [sp, #0x20]
+	ldp x0, x1, [sp, #0x10]
+	ldp x29,x30,[SP],#0x30
+	ret
+ENDPROC(get_pt_regs)
+
 /*
  * Register switch for AArch64. The callee-saved registers need to be saved
  * and restored. On entry:
@@ -1119,6 +1195,11 @@ ENTRY(cpu_switch_to)
 	ldr	lr, [x8]
 	mov	sp, x9
 	msr	sp_el0, x1
+#ifdef CONFIG_SHADOW_CALL_STACK
+	str	x18, [x0, #TSK_TI_SCS]
+	ldr	x18, [x1, #TSK_TI_SCS]
+	str	xzr, [x1, #TSK_TI_SCS]		// limit visibility of saved SCS
+#endif
 	ret
 ENDPROC(cpu_switch_to)
 NOKPROBE(cpu_switch_to)
@@ -1135,3 +1216,30 @@ ENTRY(ret_from_fork)
 	b	ret_to_user
 ENDPROC(ret_from_fork)
 NOKPROBE(ret_from_fork)
+
+
+#ifdef CONFIG_SPRD_HANG_DEBUG
+ENTRY(el1_entry_for_wdh)
+	sub sp, sp, #S_FRAME_SIZE
+	stp x0, x1, [sp, #16 * 0]
+	stp x2, x3, [sp, #16 * 1]
+	stp x4, x5, [sp, #16 * 2]
+	stp x6, x7, [sp, #16 * 3]
+	stp x8, x9, [sp, #16 * 4]
+	stp x10, x11, [sp, #16 * 5]
+	stp x12, x13, [sp, #16 * 6]
+	stp x14, x15, [sp, #16 * 7]
+	stp x16, x17, [sp, #16 * 8]
+	stp x18, x19, [sp, #16 * 9]
+	stp x20, x21, [sp, #16 * 10]
+	stp x22, x23, [sp, #16 * 11]
+	stp x24, x25, [sp, #16 * 12]
+	stp x26, x27, [sp, #16 * 13]
+	stp x28, x29, [sp, #16 * 14]
+	add x21, sp, #S_FRAME_SIZE
+	stp lr, x21, [sp, #S_LR]
+	mov x0, sp
+	bl   wdh_atf_entry
+ENDPROC(el1_entry_for_wdh)
+NOKPROBE(el1_entry_for_wdh)
+#endif

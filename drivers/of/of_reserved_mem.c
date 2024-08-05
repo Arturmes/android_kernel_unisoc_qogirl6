@@ -1,7 +1,7 @@
 /*
  * Device tree based initialization code for reserved memory.
  *
- * Copyright (c) 2013, 2015, 2017 The Linux Foundation. All Rights Reserved.
+ * Copyright (c) 2013, 2015 The Linux Foundation. All Rights Reserved.
  * Copyright (c) 2013,2014 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  * Author: Marek Szyprowski <m.szyprowski@samsung.com>
@@ -24,7 +24,6 @@
 #include <linux/of_reserved_mem.h>
 #include <linux/sort.h>
 #include <linux/slab.h>
-#include <linux/kmemleak.h>
 
 #define MAX_RESERVED_REGIONS	32
 static struct reserved_mem reserved_mem[MAX_RESERVED_REGIONS];
@@ -55,10 +54,8 @@ int __init __weak early_init_dt_alloc_reserved_memory_arch(phys_addr_t size,
 	}
 
 	*res_base = base;
-	if (nomap) {
-		kmemleak_ignore_phys(base);
+	if (nomap)
 		return memblock_remove(base, size);
-	}
 	return 0;
 }
 #else
@@ -225,16 +222,6 @@ static int __init __rmem_cmp(const void *a, const void *b)
 	if (ra->base > rb->base)
 		return 1;
 
-	/*
-	 * Put the dynamic allocations (address == 0, size == 0) before static
-	 * allocations at address 0x0 so that overlap detection works
-	 * correctly.
-	 */
-	if (ra->size < rb->size)
-		return -1;
-	if (ra->size > rb->size)
-		return 1;
-
 	return 0;
 }
 
@@ -252,7 +239,8 @@ static void __init __rmem_check_for_overlap(void)
 
 		this = &reserved_mem[i];
 		next = &reserved_mem[i + 1];
-
+		if (!(this->base && next->base))
+			continue;
 		if (this->base + this->size > next->base) {
 			phys_addr_t this_end, next_end;
 
@@ -281,7 +269,10 @@ void __init fdt_init_reserved_mem(void)
 		int len;
 		const __be32 *prop;
 		int err = 0;
+		int nomap, reusable;
 
+		nomap = of_get_flat_dt_prop(node, "no-map", NULL) != NULL;
+		reusable = of_get_flat_dt_prop(node, "reusable", NULL) != NULL;
 		prop = of_get_flat_dt_prop(node, "phandle", &len);
 		if (!prop)
 			prop = of_get_flat_dt_prop(node, "linux,phandle", &len);
@@ -291,8 +282,20 @@ void __init fdt_init_reserved_mem(void)
 		if (rmem->size == 0)
 			err = __reserved_mem_alloc_size(node, rmem->name,
 						 &rmem->base, &rmem->size);
-		if (err == 0)
-			__reserved_mem_init_node(rmem);
+		if (err == 0) {
+			err = __reserved_mem_init_node(rmem);
+			if (err != 0 && err != -ENOENT) {
+				pr_info("node %s compatible matching fail\n",
+					rmem->name);
+				memblock_free(rmem->base, rmem->size);
+				if (nomap)
+					memblock_add(rmem->base, rmem->size);
+			} else {
+				memblock_memsize_record(rmem->name, rmem->base,
+							rmem->size, nomap,
+							reusable);
+			}
+		}
 	}
 }
 

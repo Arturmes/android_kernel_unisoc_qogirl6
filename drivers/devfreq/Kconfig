@@ -73,107 +73,50 @@ config DEVFREQ_GOV_PASSIVE
 	  through sysfs entries. The passive governor recommends that
 	  devfreq device uses the OPP table to get the frequency/voltage.
 
-config DEVFREQ_GOV_CPUFREQ
-	tristate "CPUfreq"
-	depends on CPU_FREQ
+config DEVFREQ_GOV_SPRD_SCENE
+	bool "Sprd scene set from userspace"
+	depends on DEVFREQ_SPRD_AUTO_DFS
 	help
-	  Chooses frequency based on the online CPUs' current frequency and a
-	  CPU frequency to device frequency mapping table(s). This governor
-	  can be useful for controlling devices such as DDR, cache, CCI, etc.
-
-config QCOM_BIMC_BWMON
-	tristate "QCOM BIMC Bandwidth monitor hardware"
-	depends on ARCH_QCOM
-	help
-	  The BIMC Bandwidth monitor hardware allows for monitoring the
-	  traffic coming from each master port connected to the BIMC. It also
-	  has the capability to raise an IRQ when the count exceeds a
-	  programmable limit.
-
-config ARM_MEMLAT_MON
-	tristate "ARM CPU Memory Latency monitor hardware"
-	depends on ARCH_QCOM
-	help
-	  The PMU present on these ARM cores allow for the use of counters to
-	  monitor the memory latency characteristics of an ARM CPU workload.
-	  This driver uses these counters to implement the APIs needed by
-	  the mem_latency devfreq governor.
-
-config QCOMCCI_HWMON
-	tristate "QTI CCI Cache monitor hardware"
-	depends on ARCH_QCOM
-	help
-	  QTI CCI has additional PMU counters that can be used to monitor
-	  cache requests. QTI CCI hardware monitor device configures these
-	  registers to monitor cache and inform governor. It can also set an
-	  IRQ when count exceeds a programmable limit.
-
-config QCOM_M4M_HWMON
-	tristate "QCOM M4M cache monitor hardware"
-	depends on ARCH_QCOM
-	help
-	  QCOM M4M has counters that can be used to monitor requests coming to
-	  M4M. QCOM M4M hardware monitor device programs corresponding registers
-	  to monitor cache and inform governor. It can also set an IRQ when
-	  count exceeds a programmable limit.
-
-config DEVFREQ_GOV_QCOM_BW_HWMON
-	tristate "HW monitor based governor for device BW"
-	depends on QCOM_BIMC_BWMON
-	help
-	  HW monitor based governor for device to DDR bandwidth voting.
-	  This governor sets the CPU BW vote by using BIMC counters to monitor
-	  the CPU's use of DDR. Since this uses target specific counters it
-	  can conflict with existing profiling tools.  This governor is unlikely
-	  to be useful for non-QCOM devices.
-
-config DEVFREQ_GOV_QCOM_CACHE_HWMON
-	tristate "HW monitor based governor for cache frequency"
-	help
-	  HW monitor based governor for cache frequency scaling. This
-	  governor sets the cache frequency by using PM counters to monitor the
-	  CPU's use of cache. Since this governor uses some of the PM counters
-	  it can conflict with existing profiling tools. This governor is
-	  unlikely to be useful for other devices.
-
-config DEVFREQ_GOV_SPDM_HYP
-	bool "QTI SPDM Hypervisor Governor"
-	depends on ARCH_QCOM
-	help
-	  Hypervisor based governor for CPU bandwidth voting
-	  for QTI chipsets.
-	  Sets the frequency using a "on-demand" algorithm.
-	  This governor is unlikely to be useful for other devices.
-
-config DEVFREQ_GOV_MEMLAT
-	tristate "HW monitor based governor for device BW"
-	depends on ARM_MEMLAT_MON
-	help
-	  HW monitor based governor for device to DDR bandwidth voting.
-	  This governor sets the CPU BW vote based on stats obtained from memalat
-	  monitor if it determines that a workload is memory latency bound. Since
-	  this uses target specific counters it can conflict with existing profiling
-	  tools.
+	  Sprd govanor can selected by Sprd_auto_dfs driver.
+	  Userspace set scene to this govanor and then govnor send freq
+	  request to driver.
 
 comment "DEVFREQ Drivers"
 
-config DEVFREQ_GOV_QCOM_ADRENO_TZ
-	tristate "Qualcomm Technologies Inc Adreno Trustzone"
-	depends on QCOM_KGSL && QCOM_SCM
+config DEVFREQ_SPRD_AUTO_DFS
+	bool "Sprd auto_dfs driver for dmc v3 and ddrc v1"
+	depends on SPRD_SIPC
 	help
-	   Trustzone based governor for the Adreno GPU. Sets
-	   the frequency using a "on-demand" algorithm. This
-	   governor is unlikely to be useful for other
-	   devices.
+	  Sets the frequency at the user specidied or scenarios.
+	  This driver used on sprd ddrcv1 and after versions, can select
+	  governors.
+	  This driver send SIPC request to DFS core to change freq.
 
-config DEVFREQ_GOV_QCOM_GPUBW_MON
-	tristate "GPU BW voting governor"
-	depends on DEVFREQ_GOV_QCOM_ADRENO_TZ
+config DEVFREQ_SPRD_EXT_VOTE
+	bool "Sprd ext vote for sharkl5/roc1 etc"
+	depends on DEVFREQ_SPRD_AUTO_DFS
 	help
-	  This governor works together with Adreno Trustzone governor,
-	  and select bus frequency votes using an "on-demand" alorithm.
-	  This governor is unlikely to be useful for non-Adreno
-	  devices.
+	  If hardware support ext vote, software can request scene
+          without SIPC.
+          Ext vote feature can make dfs better performance.
+
+choice
+	prompt "SPRD DFS ext vote of each asic design"
+	depends on DEVFREQ_SPRD_EXT_VOTE
+	help
+	  Vote registers on pub has several different design
+
+config DEVFREQ_SPRD_EXT_VOTE_UMS512
+	bool "Sprd ext vote for sharkl5Pro"
+	help
+          Ext vote registers for sharkl5Pro .
+
+config DEVFREQ_SPRD_EXT_VOTE_ROC1
+	bool "Sprd ext vote for roc1"
+	help
+          Ext vote registers for roc1 .
+
+endchoice
 
 config ARM_EXYNOS_BUS_DEVFREQ
 	tristate "ARM EXYNOS Generic Memory Bus DEVFREQ Driver"
@@ -201,6 +144,30 @@ config ARM_TEGRA_DEVFREQ
 	  It reads ACTMON counters of memory controllers and adjusts the
 	  operating frequencies and voltages with OPP support.
 
+config SPRD_TOP_DVFS_DEVFREQ
+	bool "Sprd Top-DVFS DEVFREQ Driver"
+	default n
+	help
+	  This adds the top dvfs driver for the Sprdtrum Sharkl5 family SOCs.
+	  It accomplishes some necessory initialization which is required by
+	  subsys hardware dvfs.
+
+config SPRD_APSYS_DVFS_DEVFREQ
+	bool "Sprd Apsys-DVFS DEVFREQ Driver"
+	depends on SPRD_TOP_DVFS_DEVFREQ
+	select PM_OPP
+	default n
+	help
+	  This add the dvfs driver for apsys including the DPU, VSP and VDSP module.
+	  The driver is implemented under the linux devfreq framework.
+
+config SPRD_APSYS_VDSP_DVFS_DEVFREQ
+	bool "Sprd Apsys-DVFS-vdsp DEVFREQ Driver"
+	depends on SPRD_APSYS_DVFS_DEVFREQ
+	default n
+	help
+	  Configure whether vdsp dvfs are turned on in apsys
+
 config ARM_RK3399_DMC_DEVFREQ
 	tristate "ARM RK3399 DMC DEVFREQ Driver"
 	depends on (ARCH_ROCKCHIP && HAVE_ARM_SMCCC) || \
@@ -213,55 +180,6 @@ config ARM_RK3399_DMC_DEVFREQ
           This adds the DEVFREQ driver for the RK3399 DMC(Dynamic Memory Controller).
           It sets the frequency for the memory controller and reads the usage counts
           from hardware.
-
-config DEVFREQ_SIMPLE_DEV
-	tristate "Device driver for simple clock device with no status info"
-	select DEVFREQ_GOV_PERFORMANCE
-	select DEVFREQ_GOV_POWERSAVE
-	select DEVFREQ_GOV_USERSPACE
-	select DEVFREQ_GOV_CPUFREQ
-	help
-	  Device driver for simple devices that control their frequency using
-	  clock APIs and don't have any form of status reporting.
-
-config QCOM_DEVFREQ_DEVBW
-	bool "Qualcomm Technologies Inc. DEVFREQ device for device master <-> slave IB/AB BW voting"
-	depends on ARCH_QCOM
-	select DEVFREQ_GOV_PERFORMANCE
-	select DEVFREQ_GOV_POWERSAVE
-	select DEVFREQ_GOV_USERSPACE
-	select DEVFREQ_GOV_CPUFREQ
-	default n
-	help
-	  Different devfreq governors use this devfreq device to make CPU to
-	  DDR IB/AB bandwidth votes. This driver provides a SoC topology
-	  agnostic interface to so that some of the devfreq governors can be
-	  shared across SoCs.
-
-config SPDM_SCM
-	bool "QTI SPDM SCM based call support"
-	depends on DEVFREQ_SPDM
-	help
-	  SPDM driver support the dcvs algorithm logic being accessed via
-	  scm or hvc calls. This adds the support for SPDM interaction to
-          tz via SCM based call. If not selected then Hypervisor interaction
-          will be activated.
-
-config DEVFREQ_SPDM
-	bool "QTI SPDM based bandwidth voting"
-	depends on ARCH_QCOM
-	select DEVFREQ_GOV_SPDM_HYP
-	help
-	  This adds the support for SPDM based bandwidth voting on QTI chipsets.
-	  This driver allows any SPDM based client to vote for bandwidth.
-	  Used with the QTI SPDM Hypervisor Governor.
-
-config DEVFREQ_GOV_CDSPL3
-	bool "QTI DEVFREQ governor for CDSP L3 requests"
-	depends on QCOM_CDSP_RM
-	help
-	  CDSP resource manager will use this governor to vote for L3 clock
-	  for IO-coherent traffic generated from CDSP
 
 source "drivers/devfreq/event/Kconfig"
 

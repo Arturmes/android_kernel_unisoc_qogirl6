@@ -40,10 +40,22 @@ void page_writeback_init(void);
 
 int do_swap_page(struct vm_fault *vmf);
 
+extern void __free_vma(struct vm_area_struct *vma);
+
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
-extern struct vm_area_struct *get_vma(struct mm_struct *mm,
-				      unsigned long addr);
-extern void put_vma(struct vm_area_struct *vma);
+static inline void get_vma(struct vm_area_struct *vma)
+{
+	atomic_inc(&vma->vm_ref_count);
+}
+
+static inline void put_vma(struct vm_area_struct *vma)
+{
+	if (atomic_dec_and_test(&vma->vm_ref_count))
+		__free_vma(vma);
+}
+
+extern struct vm_area_struct *find_vma_rcu(struct mm_struct *mm,
+					   unsigned long addr);
 
 static inline bool vma_has_changed(struct vm_fault *vmf)
 {
@@ -57,6 +69,17 @@ static inline bool vma_has_changed(struct vm_fault *vmf)
 	smp_rmb();
 
 	return ret || seq != vmf->sequence;
+}
+
+#else  /* CONFIG_SPECULATIVE_PAGE_FAULT */
+
+static inline void get_vma(struct vm_area_struct *vma)
+{
+}
+
+static inline void put_vma(struct vm_area_struct *vma)
+{
+	__free_vma(vma);
 }
 #endif /* CONFIG_SPECULATIVE_PAGE_FAULT */
 
@@ -567,13 +590,4 @@ static inline bool is_migrate_highatomic_page(struct page *page)
 }
 
 void setup_zone_pageset(struct zone *zone);
-
-#ifdef CONFIG_ANDROID_LOW_MEMORY_KILLER
-extern bool lmk_kill_possible(void);
-#else
-static inline bool lmk_kill_possible(void)
-{
-	return false;
-}
-#endif
 #endif	/* __MM_INTERNAL_H */

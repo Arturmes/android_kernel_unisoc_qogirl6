@@ -46,6 +46,7 @@
 #include <linux/bit_spinlock.h>
 #include <linux/pagevec.h>
 #include <trace/events/block.h>
+#include <linux/fscrypt.h>
 
 static int fsync_buffers_list(spinlock_t *lock, struct list_head *list);
 static int submit_bh_wbc(int op, int op_flags, struct buffer_head *bh,
@@ -1463,47 +1464,11 @@ static bool has_bh_in_lru(int cpu, void *dummy)
 	return 0;
 }
 
-static void __evict_bh_lru(void *arg)
-{
-	struct bh_lru *b = &get_cpu_var(bh_lrus);
-	struct buffer_head *bh = arg;
-	int i;
-
-	for (i = 0; i < BH_LRU_SIZE; i++) {
-		if (b->bhs[i] == bh) {
-			brelse(b->bhs[i]);
-			b->bhs[i] = NULL;
-			goto out;
-		}
-	}
-out:
-	put_cpu_var(bh_lrus);
-}
-
-static bool bh_exists_in_lru(int cpu, void *arg)
-{
-	struct bh_lru *b = per_cpu_ptr(&bh_lrus, cpu);
-	struct buffer_head *bh = arg;
-	int i;
-
-	for (i = 0; i < BH_LRU_SIZE; i++) {
-		if (b->bhs[i] == bh)
-			return 1;
-	}
-
-	return 0;
-
-}
 void invalidate_bh_lrus(void)
 {
 	on_each_cpu_cond(has_bh_in_lru, invalidate_bh_lru, NULL, 1, GFP_KERNEL);
 }
 EXPORT_SYMBOL_GPL(invalidate_bh_lrus);
-
-static void evict_bh_lrus(struct buffer_head *bh)
-{
-	on_each_cpu_cond(bh_exists_in_lru, __evict_bh_lru, bh, 1, GFP_ATOMIC);
-}
 
 void set_bh_page(struct buffer_head *bh,
 		struct page *page, unsigned long offset)
@@ -2835,6 +2800,16 @@ int nobh_writepage(struct page *page, get_block_t *get_block,
 	/* Is the page fully outside i_size? (truncate in progress) */
 	offset = i_size & (PAGE_SIZE-1);
 	if (page->index >= end_index+1 || !offset) {
+		/*
+		 * The page may have dirty, unmapped buffers.  For example,
+		 * they may have been added in ext3_writepage().  Make them
+		 * freeable here, so the page does not leak.
+		 */
+#if 0
+		/* Not really sure about this  - do we need this ? */
+		if (page->mapping->a_ops->invalidatepage)
+			page->mapping->a_ops->invalidatepage(page, offset);
+#endif
 		unlock_page(page);
 		return 0; /* don't care */
 	}
@@ -3029,6 +3004,12 @@ int block_write_full_page(struct page *page, get_block_t *get_block,
 	/* Is the page fully outside i_size? (truncate in progress) */
 	offset = i_size & (PAGE_SIZE-1);
 	if (page->index >= end_index+1 || !offset) {
+		/*
+		 * The page may have dirty, unmapped buffers.  For example,
+		 * they may have been added in ext3_writepage().  Make them
+		 * freeable here, so the page does not leak.
+		 */
+		do_invalidatepage(page, 0, PAGE_SIZE);
 		unlock_page(page);
 		return 0; /* don't care */
 	}
@@ -3155,6 +3136,8 @@ static int submit_bh_wbc(int op, int op_flags, struct buffer_head *bh,
 	 * submit_bio -> generic_make_request may further map this bio around
 	 */
 	bio = bio_alloc(GFP_NOIO, 1);
+
+	fscrypt_set_bio_crypt_ctx_bh(bio, bh, GFP_NOIO);
 
 	if (wbc) {
 		wbc_init_bio(wbc, bio);
@@ -3332,15 +3315,8 @@ drop_buffers(struct page *page, struct buffer_head **buffers_to_free)
 
 	bh = head;
 	do {
-		if (buffer_busy(bh)) {
-			/*
-			 * Check if the busy failure was due to an
-			 * outstanding LRU reference
-			 */
-			evict_bh_lrus(bh);
-			if (buffer_busy(bh))
-				goto failed;
-		}
+		if (buffer_busy(bh))
+			goto failed;
 		bh = bh->b_this_page;
 	} while (bh != head);
 

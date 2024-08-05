@@ -86,9 +86,6 @@ struct regmap {
 
 	struct list_head debugfs_off_cache;
 	struct mutex cache_lock;
-
-	unsigned int dump_address;
-	unsigned int dump_count;
 #endif
 
 	unsigned int max_register;
@@ -160,6 +157,8 @@ struct regmap {
 
 	struct rb_root range_tree;
 	void *selector_work_buf;	/* Scratch buffer used for selector */
+
+	struct hwspinlock *hwlock;
 };
 
 struct regcache_ops {

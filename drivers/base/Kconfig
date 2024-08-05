@@ -165,9 +165,16 @@ config FW_LOADER_USER_HELPER_FALLBACK
 	  If you are unsure about this, say N here.
 
 config FW_CACHE
-       bool "Enable firmware caching during suspend"
-       depends on PM_SLEEP
-       default n
+	bool "Enable firmware caching during suspend"
+	depends on PM_SLEEP
+	default y if PM_SLEEP
+	help
+	  Because firmware caching generates uevent messages that are sent
+	  over a netlink socket, it can prevent suspend on many platforms.
+	  It is also not always useful, so on such platforms we have the
+	  option.
+
+	  If unsure, say Y.
 
 config WANT_DEV_COREDUMP
 	bool
@@ -253,7 +260,6 @@ source "drivers/base/regmap/Kconfig"
 config DMA_SHARED_BUFFER
 	bool
 	default n
-	select ANON_INODES
 	select IRQ_WORK
 	help
 	  This option enables the framework for buffer-sharing between

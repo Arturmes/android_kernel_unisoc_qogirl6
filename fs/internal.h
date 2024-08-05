@@ -49,6 +49,14 @@ extern int __block_write_begin_int(struct page *page, loff_t pos, unsigned len,
  */
 extern void __init chrdev_init(void);
 
+#ifdef CONFIG_PROC_DLOG
+/*
+ * dlog_hook.c
+ */
+void dlog_hook(struct dentry *, struct inode *, struct path *);
+void dlog_hook_rmdir(struct dentry *, struct path *);
+#endif
+
 /*
  * namei.c
  */
@@ -186,29 +194,3 @@ loff_t iomap_apply(struct inode *inode, loff_t pos, loff_t length,
 
 /* direct-io.c: */
 int sb_init_dio_done_wq(struct super_block *sb);
-
-#ifdef CONFIG_FILE_TABLE_DEBUG
-void global_filetable_print_warning_once(void);
-void global_filetable_add(struct file *filp);
-void global_filetable_del(struct file *filp);
-void global_filetable_delayed_print(struct mount *mnt);
-
-#else /* i.e NOT CONFIG_FILE_TABLE_DEBUG */
-
-static inline void global_filetable_print_warning_once(void)
-{
-}
-
-static inline void global_filetable_add(struct file *filp)
-{
-}
-
-static inline void global_filetable_del(struct file *filp)
-{
-}
-
-static inline void global_filetable_delayed_print(struct mount *mnt)
-{
-}
-
-#endif /* CONFIG_FILE_TABLE_DEBUG */

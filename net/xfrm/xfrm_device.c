@@ -80,7 +80,8 @@ int xfrm_dev_state_add(struct net *net, struct xfrm_state *x,
 		}
 
 		dst = __xfrm_dst_lookup(net, 0, 0, saddr, daddr,
-					x->props.family, x->props.output_mark);
+					x->props.family,
+					xfrm_smark_get(0, x));
 		if (IS_ERR(dst))
 			return 0;
 
@@ -153,6 +154,11 @@ static int xfrm_dev_register(struct net_device *dev)
 	return NOTIFY_DONE;
 }
 
+static int xfrm_dev_unregister(struct net_device *dev)
+{
+	return NOTIFY_DONE;
+}
+
 static int xfrm_dev_feat_change(struct net_device *dev)
 {
 	if ((dev->features & NETIF_F_HW_ESP) && !dev->xfrmdev_ops)
@@ -172,6 +178,7 @@ static int xfrm_dev_down(struct net_device *dev)
 	if (dev->features & NETIF_F_HW_ESP)
 		xfrm_dev_state_flush(dev_net(dev), dev, true);
 
+	xfrm_garbage_collect(dev_net(dev));
 	return NOTIFY_DONE;
 }
 
@@ -183,11 +190,13 @@ static int xfrm_dev_event(struct notifier_block *this, unsigned long event, void
 	case NETDEV_REGISTER:
 		return xfrm_dev_register(dev);
 
+	case NETDEV_UNREGISTER:
+		return xfrm_dev_unregister(dev);
+
 	case NETDEV_FEAT_CHANGE:
 		return xfrm_dev_feat_change(dev);
 
 	case NETDEV_DOWN:
-	case NETDEV_UNREGISTER:
 		return xfrm_dev_down(dev);
 	}
 	return NOTIFY_DONE;

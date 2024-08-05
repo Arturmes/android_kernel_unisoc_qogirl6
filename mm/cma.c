@@ -35,8 +35,6 @@
 #include <linux/cma.h>
 #include <linux/highmem.h>
 #include <linux/io.h>
-#include <linux/delay.h>
-#include <linux/show_mem_notifier.h>
 #include <trace/events/cma.h>
 
 #include "cma.h"
@@ -98,29 +96,6 @@ static void cma_clear_bitmap(struct cma *cma, unsigned long pfn,
 	mutex_unlock(&cma->lock);
 }
 
-static int cma_showmem_notifier(struct notifier_block *nb,
-				   unsigned long action, void *data)
-{
-	int i;
-	unsigned long used;
-	struct cma *cma;
-
-	for (i = 0; i < cma_area_count; i++) {
-		cma = &cma_areas[i];
-		used = bitmap_weight(cma->bitmap,
-				     (int)cma_bitmap_maxno(cma));
-		used <<= cma->order_per_bit;
-		pr_info("cma-%d pages: => %lu used of %lu total pages\n",
-			i, used, cma->count);
-	}
-
-	return 0;
-}
-
-static struct notifier_block cma_nb = {
-	.notifier_call = cma_showmem_notifier,
-};
-
 static int __init cma_activate_area(struct cma *cma)
 {
 	int bitmap_size = BITS_TO_LONGS(cma_bitmap_maxno(cma)) * sizeof(long);
@@ -163,10 +138,6 @@ static int __init cma_activate_area(struct cma *cma)
 	spin_lock_init(&cma->mem_head_lock);
 #endif
 
-	if (!PageHighMem(pfn_to_page(cma->base_pfn)))
-		kmemleak_free_part(__va(cma->base_pfn << PAGE_SHIFT),
-				cma->count << PAGE_SHIFT);
-
 	return 0;
 
 not_in_zone:
@@ -186,8 +157,6 @@ static int __init cma_init_reserved_areas(void)
 		if (ret)
 			return ret;
 	}
-
-	show_mem_notifier_register(&cma_nb);
 
 	return 0;
 }
@@ -452,11 +421,9 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align,
 	unsigned long pfn = -1;
 	unsigned long start = 0;
 	unsigned long bitmap_maxno, bitmap_no, bitmap_count;
+	size_t i;
 	struct page *page = NULL;
 	int ret = -ENOMEM;
-	int retry_after_sleep = 0;
-	int max_retries = 2;
-	int available_regions = 0;
 
 	if (!cma || !cma->count)
 		return NULL;
@@ -466,8 +433,6 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align,
 
 	if (!count)
 		return NULL;
-
-	trace_cma_alloc_start(count, align);
 
 	mask = cma_bitmap_aligned_mask(cma, align);
 	offset = cma_bitmap_aligned_offset(cma, align);
@@ -483,35 +448,9 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align,
 				bitmap_maxno, start, bitmap_count, mask,
 				offset);
 		if (bitmap_no >= bitmap_maxno) {
-			if ((retry_after_sleep < max_retries) &&
-						(ret == -EBUSY)) {
-				start = 0;
-				/*
-				 * update max retries if available free regions
-				 * are less.
-				 */
-				if (available_regions < 3)
-					max_retries = 5;
-				available_regions = 0;
-				/*
-				 * Page may be momentarily pinned by some other
-				 * process which has been scheduled out, eg.
-				 * in exit path, during unmap call, or process
-				 * fork and so cannot be freed there. Sleep
-				 * for 100ms and retry twice to see if it has
-				 * been freed later.
-				 */
-				mutex_unlock(&cma->lock);
-				msleep(100);
-				retry_after_sleep++;
-				continue;
-			} else {
-				mutex_unlock(&cma->lock);
-				break;
-			}
+			mutex_unlock(&cma->lock);
+			break;
 		}
-
-		available_regions++;
 		bitmap_set(cma->bitmap, bitmap_no, bitmap_count);
 		/*
 		 * It's safe to drop the lock here. We've marked this region for
@@ -536,13 +475,21 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align,
 
 		pr_debug("%s(): memory range at %p is busy, retrying\n",
 			 __func__, pfn_to_page(pfn));
-
-		trace_cma_alloc_busy_retry(pfn, pfn_to_page(pfn), count, align);
 		/* try again with a bit different memory target */
 		start = bitmap_no + mask + 1;
 	}
 
 	trace_cma_alloc(pfn, page, count, align);
+
+	/*
+	 * CMA can allocate multiple page blocks, which results in different
+	 * blocks being marked with different tags. Reset the tags to ignore
+	 * those page blocks.
+	 */
+	if (page) {
+		for (i = 0; i < count; i++)
+			page_kasan_tag_reset(page + i);
+	}
 
 	if (ret && !(gfp_mask & __GFP_NOWARN)) {
 		pr_info("%s: alloc failed, req-size: %zu pages, ret: %d\n",

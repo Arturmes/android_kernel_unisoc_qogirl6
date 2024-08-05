@@ -35,9 +35,9 @@
 #include <linux/sizes.h>
 #include <linux/syscalls.h>
 #include <linux/mm_types.h>
+#include <linux/kasan.h>
 
 #include <asm/atomic.h>
-#include <asm/barrier.h>
 #include <asm/bug.h>
 #include <asm/cpufeature.h>
 #include <asm/debug-monitors.h>
@@ -50,7 +50,10 @@
 #include <asm/exception.h>
 #include <asm/system_misc.h>
 #include <asm/sysreg.h>
-#include <trace/events/exception.h>
+
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+#include <linux/sec_debug.h>
+#endif
 
 static const char *handler[]= {
 	"Synchronous Abort",
@@ -60,6 +63,57 @@ static const char *handler[]= {
 };
 
 int show_unhandled_signals = 0;
+
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+/*
+ * Dump out the contents of some kernel memory nicely...
+ */
+static void dump_mem(const char *lvl, const char *str, unsigned long bottom,
+		unsigned long top)
+{
+	unsigned long first;
+	mm_segment_t fs;
+	int i;
+
+	/*
+	 * We need to switch to kernel mode so that we can use __get_user
+	 * to safely read from kernel space.
+	 */
+	fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	printk("%s%s(0x%016lx to 0x%016lx)\n", lvl, str, bottom, top);
+
+	if (!IS_ENABLED(CONFIG_SEC_DEBUG_DUMP_TASK_STACK)) {
+		pr_warn("CONFIG_SEC_DEBUG_DUMP_TASK_STACK is not enabled!\n");
+		goto done;
+	}
+
+	for (first = bottom & ~31; first < top; first += 32) {
+		unsigned long p;
+		char str[sizeof(" 12345678") * 8 + 1];
+
+		memset(str, ' ', sizeof(str));
+		str[sizeof(str) - 1] = '\0';
+
+		for (p = first, i = 0; i < (32 / 8)
+				&& p < top; i++, p += 8) {
+			if (p >= bottom && p < top) {
+				unsigned long val;
+
+				if (__get_user(val, (unsigned long *)p) == 0)
+					sprintf(str + i * 17, " %016lx", val);
+				else
+					sprintf(str + i * 17, " ????????????????");
+			}
+		}
+		printk("%s%04lx:%s\n", lvl, first & 0xffff, str);
+	}
+
+done:
+	set_fs(fs);
+}
+#endif
 
 static void dump_backtrace_entry(unsigned long where)
 {
@@ -71,6 +125,23 @@ static void __dump_instr(const char *lvl, struct pt_regs *regs)
 	unsigned long addr = instruction_pointer(regs);
 	char str[sizeof("00000000 ") * 5 + 2 + 1], *p = str;
 	int i;
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+	struct task_struct *tsk = current;
+	unsigned long bottom = regs->sp;
+
+	if (!object_is_on_stack((void *)bottom)) {
+		unsigned long irq_stack =
+			(unsigned long)this_cpu_read(irq_stack_ptr);
+		if ((irq_stack <= bottom) &&
+				(bottom < irq_stack + IRQ_STACK_SIZE))
+			dump_mem(KERN_EMERG, "Stack: ", bottom,
+					irq_stack + IRQ_STACK_SIZE);
+		bottom = (unsigned long)task_stack_page(tsk);
+	}
+	dump_mem(KERN_EMERG, "Stack: ", bottom,
+			THREAD_SIZE + (unsigned long)task_stack_page(tsk));
+	dump_backtrace(regs, tsk);
+#endif
 
 	for (i = -4; i < 1; i++) {
 		unsigned int val, bad;
@@ -103,9 +174,10 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 {
 	struct stackframe frame;
 	int skip = 0;
-	long cur_state = 0;
-	unsigned long cur_sp = 0;
-	unsigned long cur_fp = 0;
+	unsigned long frame_fp_saved;
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+	unsigned long prev_fp = 0;
+#endif
 
 	pr_debug("%s(regs = %p tsk = %p)\n", __func__, regs, tsk);
 
@@ -130,9 +202,6 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 		 */
 		frame.fp = thread_saved_fp(tsk);
 		frame.pc = thread_saved_pc(tsk);
-		cur_state = tsk->state;
-		cur_sp = thread_saved_sp(tsk);
-		cur_fp = frame.fp;
 	}
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
 	frame.graph = tsk->curr_ret_stack;
@@ -140,23 +209,7 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 
 	printk("Call trace:\n");
 	do {
-		if (tsk != current && (cur_state != tsk->state
-			/*
-			 * We would not be printing backtrace for the task
-			 * that has changed state from uninterruptible to
-			 * running before hitting the do-while loop but after
-			 * saving the current state. If task is in running
-			 * state before saving the state, then we may print
-			 * wrong call trace or end up in infinite while loop
-			 * if *(fp) and *(fp+8) are same. While the situation
-			 * will stop print when that task schedule out.
-			 */
-			|| cur_sp != thread_saved_sp(tsk)
-			|| cur_fp != thread_saved_fp(tsk))) {
-			printk("The task:%s had been rescheduled!\n",
-				tsk->comm);
-			break;
-		}
+		frame_fp_saved = frame.fp;
 		/* skip until specified stack frame */
 		if (!skip) {
 			dump_backtrace_entry(frame.pc);
@@ -171,7 +224,17 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 			 */
 			dump_backtrace_entry(regs->pc);
 		}
-	} while (!unwind_frame(tsk, &frame));
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+		if (prev_fp >= frame.fp) {
+			if (on_accessible_stack(tsk, frame.fp)) {
+				printk("FP looks invalid : 0x%016lx state(0x%016lx) on_cpu(%d)@cpu%u\n",
+						frame.fp, tsk->state, tsk->on_cpu, tsk->cpu);
+			}
+			break;
+		}
+		prev_fp = frame.fp;
+#endif
+	} while (!unwind_frame(tsk, &frame) && (frame_fp_saved != frame.fp));
 
 	put_task_stack(tsk);
 }
@@ -181,6 +244,38 @@ void show_stack(struct task_struct *tsk, unsigned long *sp)
 	dump_backtrace(NULL, tsk);
 	barrier();
 }
+
+int irqsoff_unwind_backtrace(unsigned long *ip)
+{
+	struct stackframe frame;
+	int call_lvl = 0;
+	unsigned long frame_fp_saved;
+
+	if (!try_get_task_stack(current))
+		return 0;
+
+	frame.fp = (unsigned long)__builtin_frame_address(0);
+	frame.pc = (unsigned long)irqsoff_unwind_backtrace;
+
+	for (call_lvl = 0; call_lvl < 6; call_lvl++) {
+		int urc;
+
+		frame_fp_saved = frame.fp;
+		urc = irqsoff_unwind_frame(current, &frame);
+		if (urc < 0)
+			break;
+
+		if (frame_fp_saved == frame.fp)
+			break;
+
+		ip[call_lvl] = frame.pc;
+	}
+
+	put_task_stack(current);
+
+	return call_lvl;
+}
+EXPORT_SYMBOL(irqsoff_unwind_backtrace);
 
 #ifdef CONFIG_PREEMPT
 #define S_PREEMPT " PREEMPT"
@@ -228,6 +323,14 @@ void die(const char *str, struct pt_regs *regs, int err)
 	raw_spin_lock_irqsave(&die_lock, flags);
 
 	oops_enter();
+
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SCHED_LOG)
+	sec_debug_sched_msg("!!die!!");
+	sec_debug_sched_msg("!!die!!");
+#endif
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SUMMARY)
+	sec_debug_summary_save_die_info(str, regs);
+#endif
 
 	console_verbose();
 	bust_spinlocks(1);
@@ -393,16 +496,12 @@ void arm64_notify_segfault(struct pt_regs *regs, unsigned long addr)
 
 asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 {
-	void __user *pc = (void __user *)instruction_pointer(regs);
-
 	/* check for AArch32 breakpoint instructions */
 	if (!aarch32_break_handler(regs))
 		return;
 
 	if (call_undef_hook(regs) == 0)
 		return;
-
-	trace_undef_instr(regs, pc);
 
 	force_signal_inject(SIGILL, ILL_ILLOPC, regs, 0);
 }
@@ -482,7 +581,6 @@ static void cntvct_read_handler(unsigned int esr, struct pt_regs *regs)
 {
 	int rt = (esr & ESR_ELx_SYS64_ISS_RT_MASK) >> ESR_ELx_SYS64_ISS_RT_SHIFT;
 
-	isb();
 	pt_regs_write_reg(regs, rt, arch_counter_get_cntvct());
 	arm64_skip_faulting_instruction(regs, AARCH64_INSN_SIZE);
 }
@@ -614,6 +712,11 @@ const char *esr_get_class_string(u32 esr)
 asmlinkage void bad_mode(struct pt_regs *regs, int reason, unsigned int esr)
 {
 	console_verbose();
+
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+	sec_debug_save_badmode_info(reason, handler[reason],
+			esr, esr_get_class_string(esr));
+#endif
 
 	pr_crit("Bad mode in %s handler detected on CPU%d, code 0x%08x -- %s\n",
 		handler[reason], smp_processor_id(), esr,
@@ -748,6 +851,58 @@ static struct break_hook bug_break_hook = {
 	.fn = bug_handler,
 };
 
+#ifdef CONFIG_KASAN_SW_TAGS
+
+#define KASAN_ESR_RECOVER	0x20
+#define KASAN_ESR_WRITE	0x10
+#define KASAN_ESR_SIZE_MASK	0x0f
+#define KASAN_ESR_SIZE(esr)	(1 << ((esr) & KASAN_ESR_SIZE_MASK))
+
+static int kasan_handler(struct pt_regs *regs, unsigned int esr)
+{
+	bool recover = esr & KASAN_ESR_RECOVER;
+	bool write = esr & KASAN_ESR_WRITE;
+	size_t size = KASAN_ESR_SIZE(esr);
+	u64 addr = regs->regs[0];
+	u64 pc = regs->pc;
+
+	if (user_mode(regs))
+		return DBG_HOOK_ERROR;
+
+	kasan_report(addr, size, write, pc);
+
+	/*
+	 * The instrumentation allows to control whether we can proceed after
+	 * a crash was detected. This is done by passing the -recover flag to
+	 * the compiler. Disabling recovery allows to generate more compact
+	 * code.
+	 *
+	 * Unfortunately disabling recovery doesn't work for the kernel right
+	 * now. KASAN reporting is disabled in some contexts (for example when
+	 * the allocator accesses slab object metadata; this is controlled by
+	 * current->kasan_depth). All these accesses are detected by the tool,
+	 * even though the reports for them are not printed.
+	 *
+	 * This is something that might be fixed at some point in the future.
+	 */
+	if (!recover)
+		die("Oops - KASAN", regs, 0);
+
+	/* If thread survives, skip over the brk instruction and continue: */
+	arm64_skip_faulting_instruction(regs, AARCH64_INSN_SIZE);
+	return DBG_HOOK_HANDLED;
+}
+
+#define KASAN_ESR_VAL (0xf2000000 | KASAN_BRK_IMM)
+#define KASAN_ESR_MASK 0xffffff00
+
+static struct break_hook kasan_break_hook = {
+	.esr_val = KASAN_ESR_VAL,
+	.esr_mask = KASAN_ESR_MASK,
+	.fn = kasan_handler,
+};
+#endif
+
 /*
  * Initial handler for AArch64 BRK exceptions
  * This handler only used until debug_traps_init().
@@ -755,6 +910,10 @@ static struct break_hook bug_break_hook = {
 int __init early_brk64(unsigned long addr, unsigned int esr,
 		struct pt_regs *regs)
 {
+#ifdef CONFIG_KASAN_SW_TAGS
+	if ((esr & KASAN_ESR_MASK) == KASAN_ESR_VAL)
+		return kasan_handler(regs, esr) != DBG_HOOK_HANDLED;
+#endif
 	return bug_handler(regs, esr) != DBG_HOOK_HANDLED;
 }
 
@@ -762,4 +921,7 @@ int __init early_brk64(unsigned long addr, unsigned int esr,
 void __init trap_init(void)
 {
 	register_break_hook(&bug_break_hook);
+#ifdef CONFIG_KASAN_SW_TAGS
+	register_break_hook(&kasan_break_hook);
+#endif
 }
