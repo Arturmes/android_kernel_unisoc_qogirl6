@@ -2647,110 +2647,6 @@ static void musb_restore_context(struct musb *musb)
 	musb_writeb(musb_base, MUSB_INDEX, musb->context.index);
 }
 
-static int musb_suspend(struct device *dev)
-{
-	struct musb	*musb = dev_to_musb(dev);
-	unsigned long	flags;
-	int ret;
-
-#ifdef CONFIG_USB_MUSB_SPRD
-	if (musb->power_always_on && is_host_active(musb))
-		return 0;
-#endif
-	if (pm_runtime_suspended(dev))
-		return 0;
-
-	ret = pm_runtime_get_sync(dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(dev);
-		return ret;
-	}
-
-	musb_platform_disable(musb);
-	musb_disable_interrupts(musb);
-
-	musb->flush_irq_work = true;
-	while (flush_delayed_work(&musb->irq_work))
-		;
-	musb->flush_irq_work = false;
-
-	if (!(musb->io.quirks & MUSB_PRESERVE_SESSION))
-		musb_writeb(musb->mregs, MUSB_DEVCTL, 0);
-
-	WARN_ON(!list_empty(&musb->pending_list));
-
-	spin_lock_irqsave(&musb->lock, flags);
-
-	if (is_peripheral_active(musb)) {
-		/* FIXME force disconnect unless we know USB will wake
-		 * the system up quickly enough to respond ...
-		 */
-	} else if (is_host_active(musb)) {
-		/* we know all the children are suspended; sometimes
-		 * they will even be wakeup-enabled.
-		 */
-	}
-
-	musb_save_context(musb);
-
-	spin_unlock_irqrestore(&musb->lock, flags);
-	return 0;
-}
-
-static int musb_resume(struct device *dev)
-{
-	struct musb *musb = dev_to_musb(dev);
-	unsigned long flags;
-	int error;
-	u8 devctl;
-	u8 mask;
-
-	/*
-	 * For static cmos like DaVinci, register values were preserved
-	 * unless for some reason the whole soc powered down or the USB
-	 * module got reset through the PSC (vs just being disabled).
-	 *
-	 * For the DSPS glue layer though, a full register restore has to
-	 * be done. As it shouldn't harm other platforms, we do it
-	 * unconditionally.
-	 */
-#ifdef CONFIG_USB_MUSB_SPRD
-	if (musb->power_always_on && is_host_active(musb))
-		return 0;
-#endif
-	if (pm_runtime_suspended(dev))
-		return 0;
-
-	musb_restore_context(musb);
-
-	devctl = musb_readb(musb->mregs, MUSB_DEVCTL);
-	mask = MUSB_DEVCTL_BDEVICE | MUSB_DEVCTL_FSDEV | MUSB_DEVCTL_LSDEV;
-	if ((devctl & mask) != (musb->context.devctl & mask))
-		musb->port1_status = 0;
-
-	musb_enable_interrupts(musb);
-	musb_platform_enable(musb);
-
-	/* session might be disabled in suspend */
-	if (musb->port_mode == MUSB_HOST &&
-	    !(musb->ops->quirks & MUSB_PRESERVE_SESSION)) {
-		devctl |= MUSB_DEVCTL_SESSION;
-		musb_writeb(musb->mregs, MUSB_DEVCTL, devctl);
-	}
-
-	spin_lock_irqsave(&musb->lock, flags);
-	error = musb_run_resume_work(musb);
-	if (error)
-		dev_err(musb->controller, "resume work failed with %i\n",
-			error);
-	spin_unlock_irqrestore(&musb->lock, flags);
-
-	pm_runtime_mark_last_busy(dev);
-	pm_runtime_put_autosuspend(dev);
-
-	return 0;
-}
-
 static int musb_runtime_suspend(struct device *dev)
 {
 	struct musb	*musb = dev_to_musb(dev);
@@ -2800,8 +2696,6 @@ static int musb_runtime_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops musb_dev_pm_ops = {
-	.suspend	= musb_suspend,
-	.resume		= musb_resume,
 	.runtime_suspend = musb_runtime_suspend,
 	.runtime_resume = musb_runtime_resume,
 };

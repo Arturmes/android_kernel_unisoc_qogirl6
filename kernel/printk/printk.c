@@ -3568,9 +3568,14 @@ void __init sec_log_buf_pull_early_buffer(bool *init_done)
 #ifdef CONFIG_SEC_DEBUG_SUMMARY
 void sec_debug_summary_set_klog_info(struct sec_debug_summary_data_apss *apss)
 {
-	apss->log.first_idx_paddr = (unsigned int)__pa(&log_first_idx);
-	apss->log.next_idx_paddr = (unsigned int)__pa(&log_next_idx);
-	apss->log.log_paddr = (unsigned long)__pa(log_buf);
-	apss->log.size_paddr = (unsigned long)__pa(&log_buf_len);
+#ifdef CONFIG_KALLSYMS
+	apss->log.log_paddr = 
+		__pa(kallsyms_lookup_name("log_buf"));
+	apss->log.first_idx_paddr =
+		__pa(kallsyms_lookup_name("log_first_idx"));
+	apss->log.next_idx_paddr =
+		__pa(kallsyms_lookup_name("log_next_idx"));                 
+#endif
+	apss->log.size = log_buf_len_get();
 }
 #endif

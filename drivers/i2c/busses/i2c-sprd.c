@@ -76,7 +76,12 @@
 
 /* timeout (ms) for pm runtime autosuspend */
 #define SPRD_I2C_PM_TIMEOUT	1000
-#define I2C_XFER_TIMEOUT	3000
+#define I2C_XFER_TIMEOUT	10000
+
+/* dynamic modify clk_freq flag  */
+#define I2C_1M_FLAG		0X0080
+#define I2C_400K_FLAG		0X0040
+
 struct sprd_syscon_i2c {
 	struct regmap *regmap;
 	u32 reg;
@@ -260,12 +265,13 @@ static void sprd_i2c_data_transfer(struct sprd_i2c *i2c_dev)
 	}
 }
 
+static void sprd_i2c_set_clk(struct sprd_i2c *i2c_dev, u32 freq);
+
 static int sprd_i2c_handle_msg(struct i2c_adapter *i2c_adap,
 			       struct i2c_msg *msg, bool is_last_msg)
 {
 	struct sprd_i2c *i2c_dev = i2c_adap->algo_data;
 	unsigned long time_left;
-
 	i2c_dev->msg = msg;
 	i2c_dev->buf = msg->buf;
 	i2c_dev->count = msg->len;
@@ -275,6 +281,15 @@ static int sprd_i2c_handle_msg(struct i2c_adapter *i2c_adap,
 	sprd_i2c_set_devaddr(i2c_dev, msg);
 	sprd_i2c_set_count(i2c_dev, msg->len);
 
+	/* according to msg->flags(0x40 or 0x80) to modify clk_freq */
+
+	if (msg->flags & I2C_400K_FLAG) {
+		sprd_i2c_set_clk(i2c_dev, 400000);
+	} else if (msg->flags & I2C_1M_FLAG) {
+		sprd_i2c_set_clk(i2c_dev, 1000000);
+	}
+
+	//sprd_i2c_dump_reg(i2c_dev);
 	if (msg->flags & I2C_M_RD) {
 		sprd_i2c_opt_mode(i2c_dev, 1);
 		sprd_i2c_send_stop(i2c_dev, 1);
@@ -298,6 +313,7 @@ static int sprd_i2c_handle_msg(struct i2c_adapter *i2c_adap,
 				msecs_to_jiffies(I2C_XFER_TIMEOUT));
 	if (!time_left)
 		return -EIO;
+
 
 	return i2c_dev->err;
 }

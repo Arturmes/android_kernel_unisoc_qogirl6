@@ -432,6 +432,13 @@
 				regulator-max-microvolt = <3750000>;
 				regulator-ramp-delay = <25000>;
 			};
+
+			vddvib: LDO_VDDVIB {
+				regulator-name = "vddvib";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-ramp-delay = <25000>;
+			};
 		};
 
 		poweroff@1820 {

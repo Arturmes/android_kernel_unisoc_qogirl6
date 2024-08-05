@@ -61,7 +61,7 @@
 			};
 
 			fingerprint@0 {
-				compatible = "sunwave,afs121";
+				compatible = "microarray,afs121";
 				fpint-gpios = <&eic_async 29 0>;
 			};
 
@@ -100,7 +100,7 @@
 				constant_charge_voltage_max_microvolt = <4340000>;
 				factory-internal-resistance-micro-ohms = <252000>;
 				voltage-min-design-microvolt = <3450000>;
-				charge-pumps-threshold-microvolt = <4100000>;
+				fast-charge-threshold-microvolt = <4100000>;
 				ocv-capacity-celsius = <20>;
 				ocv-capacity-table-0 = <4313000 100>, <4254000 95>, <4201000 90>,
 							<4151000 85>, <4102000 80>, <4060000 75>,
@@ -792,7 +792,7 @@
 	first-calib-capacity = <50>;
 	fgu-capacity-track;
 	fullbatt-track-end-vol = <4295>;
-	fullbatt-track-end-cur = <125>;
+	fullbatt-track-end-cur = <130>;
 	phys = <&hsphy>;
 };
 
@@ -809,7 +809,6 @@
 	sprd,wb-memory = <&wb_reserved>;
 
 	sprd,backlight = <&pwm_backlight>;
-	sprd,dpi-clk-div = <6>;
 };
 
 &lcd_g40396_truly_mipi_fhd {
@@ -830,6 +829,8 @@
 
 &pmic_fchg {
 	sprd,input-voltage-microvolt = <5000000>;
+	sprd,pd-fixed-max-microwatt = <18000000>;
+	sprd,support-sfcp;
 	sprd,support-pd-pps;
 	phys = <&hsphy>;
 };
@@ -842,7 +843,7 @@
 		power-role = "dual";
 		try-power-role = "sink";
 		source-pdos = <PDO_FIXED(5000, 400, PDO_FIXED_USB_COMM)>;
-		sink-pdos = <PDO_FIXED(5000, 2000, PDO_FIXED_USB_COMM)
+		sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
 			     PDO_PPS_APDO(3300, 11000, 3000)>;
 		op-sink-microwatt = <10000000>;
 	};

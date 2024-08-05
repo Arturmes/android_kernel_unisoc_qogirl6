@@ -93,16 +93,6 @@ int __init summary_init_coreinfo(struct sec_debug_summary_data_apss *secdbg_apss
 	summary_coreinfo_append_str("OFFSET(tk_core.timekeeper)=%zu\n", 8);
 
 	SUMMARY_COREINFO_OFFSET(timekeeper, xtime_sec);
-#ifdef CONFIG_SCHED_WALT
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0)
-	SUMMARY_COREINFO_OFFSET(rq, cluster);
-	SUMMARY_COREINFO_OFFSET(sched_cluster, cur_freq);
-	SUMMARY_COREINFO_OFFSET(sched_cluster, max_mitigated_freq);
-#else
-	SUMMARY_COREINFO_OFFSET(rq, wrq);
-	SUMMARY_COREINFO_OFFSET(walt_sched_cluster, cur_freq);
-#endif
-#endif
 
 #ifdef CONFIG_SEC_DEBUG_MODULE_INFO
 #ifdef CONFIG_MODULES_TREE_LOOKUP

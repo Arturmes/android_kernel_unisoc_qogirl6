@@ -1046,6 +1046,13 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 		 * Set bus speed.
 		 */
 		mmc_set_clock(host, mmc_sd_get_max_clock(card));
+		if (card->host->ios.timing == MMC_TIMING_SD_HS) {
+			err = card->host->ops->execute_tuning(card->host,
+				MMC_SET_BLOCKLEN);
+			if (err)
+				pr_warn("%s: high-speed tuning failed\n",
+					mmc_hostname(card->host));
+		}
 
 		/*
 		 * Switch to wider bus (if supported).
@@ -1057,6 +1064,13 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 				goto free_card;
 
 			mmc_set_bus_width(host, MMC_BUS_WIDTH_4);
+		}
+		if (card->host->ios.timing == MMC_TIMING_SD_HS) {
+			err = card->host->ops->execute_tuning(card->host,
+				MMC_SEND_TUNING_BLOCK);
+			if (err)
+				pr_warn("%s: high-speed tuning failed\n",
+					mmc_hostname(card->host));
 		}
 	}
 
@@ -1385,6 +1399,8 @@ err:
 	mmc_detach_bus(host);
 
 	pr_err("%s: error %d whilst initialising SD card\n",
+		mmc_hostname(host), err);
+	ST_LOG("%s: error %d whilst initialising SD card\n",
 		mmc_hostname(host), err);
 
 	return err;

@@ -57,7 +57,7 @@ struct smsg_assert_notify {
 struct smsg_ipc *smsg_ipcs[SIPC_ID_NR];
 EXPORT_SYMBOL_GPL(smsg_ipcs);
 
-static ushort debug_enable;
+ushort debug_enable = 1;
 static ushort is_wklock_setup;
 
 static struct smsg_assert_notify g_smsg_assert_notify[SIPC_ID_NR];
@@ -156,12 +156,6 @@ static irqreturn_t smsg_process(struct smsg *msg,
 			 msg->type,
 			 msg->flag,
 			 msg->value);
-	}
-
-	if (msg->type == SMSG_TYPE_ASSERT) {
-		if (assert_notify->handler)
-			assert_notify->handler((phys_addr_t)msg->value, assert_notify->data);
-		return IRQ_HANDLED;
 	}
 
 	if (msg->type == SMSG_TYPE_DIE) {

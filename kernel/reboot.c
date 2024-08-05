@@ -390,11 +390,9 @@ void ctrl_alt_del(void)
 	else
 		kill_cad_pid(SIGINT, 1);
 }
-/*
-char poweroff_cmd[POWEROFF_CMD_PATH_LEN] = "/sbin/poweroff";*/
-char poweroff_cmd[POWEROFF_CMD_PATH_LEN] = "/system/bin/reboot -p";
-// static const char reboot_cmd[] = "/sbin/reboot";
-static const char reboot_cmd[] = "/system/bin/reboot";
+
+char poweroff_cmd[POWEROFF_CMD_PATH_LEN] = "/sbin/poweroff";
+static const char reboot_cmd[] = "/sbin/reboot";
 
 static int run_cmd(const char *cmd)
 {

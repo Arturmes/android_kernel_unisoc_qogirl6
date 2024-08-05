@@ -296,7 +296,6 @@ DECLARE_PER_CPU(enum sec_debug_upload_cause_t, sec_debug_upload_cause);
 
 extern bool sec_debug_is_enabled(void);
 extern unsigned int sec_debug_level(void);
-extern void (*sec_nvmem_pon_write)(u8 pon_rr);
 
 static __always_inline void sec_debug_strcpy_task_comm(char *dst, char *src)
 {

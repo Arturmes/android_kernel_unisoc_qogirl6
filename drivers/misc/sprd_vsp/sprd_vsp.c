@@ -42,6 +42,7 @@
 #include "vsp_common.h"
 #include "sprd_dvfs_vsp.h"
 
+
 #ifdef pr_fmt
 #undef pr_fmt
 #endif
@@ -87,6 +88,7 @@ static long vsp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	struct vsp_fh *vsp_fp = filp->private_data;
 	u8 need_rst_axi = 0;
 	u32 tmp_rst_msk = 0;
+	int tmp_codec_id = 0;
 
 	if (vsp_fp == NULL) {
 		pr_err("%s error occurred, vsp_fp == NULL\n", __func__);
@@ -322,20 +324,18 @@ static long vsp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		break;
 
 	case VSP_SET_CODEC_ID:
-		get_user(vsp_fp->codec_id, (int __user *)arg);
-		if (vsp_fp->codec_id >= VSP_ENC) {
-			pr_info("set invalid codec_id %d\n", vsp_fp->codec_id);
+		get_user(tmp_codec_id, (int __user *)arg);
+		if (tmp_codec_id < VSP_H264_DEC || tmp_codec_id > VSP_ENC) {
+			pr_err("set invalid codec_id %d\n", tmp_codec_id);
 			return -EINVAL;
 		}
-
-		codec_instance_count[vsp_fp->codec_id]++;
-		pr_debug("set codec_id %d counter %d\n", vsp_fp->codec_id,
-			codec_instance_count[vsp_fp->codec_id]);
+		vsp_fp->codec_id = tmp_codec_id;
+		pr_debug("set codec_id %d\n", vsp_fp->codec_id);
 		break;
 
 	case VSP_GET_CODEC_COUNTER:
 
-		if (vsp_fp->codec_id >= VSP_ENC) {
+		if (vsp_fp->codec_id < VSP_H264_DEC || vsp_fp->codec_id > VSP_ENC) {
 			pr_info("invalid vsp codec_id %d\n", vsp_fp->codec_id);
 			return -EINVAL;
 		}
@@ -577,15 +577,22 @@ static int vsp_parse_dt(struct platform_device *pdev)
 
 static int vsp_nocache_mmap(struct file *filp, struct vm_area_struct *vma)
 {
+
+	size_t memsize = vma->vm_end - vma->vm_start;
+
+	if (memsize > SPRD_VSP_MAP_SIZE) {
+		pr_err("%s, need:%x should be:%x ", __func__, memsize, SPRD_VSP_MAP_SIZE);
+		return -EINVAL;
+	}
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 	vma->vm_pgoff = (sprd_vsp_phys_addr >> PAGE_SHIFT);
 	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
-			    vma->vm_end - vma->vm_start, vma->vm_page_prot))
+			    memsize, vma->vm_page_prot))
 		return -EAGAIN;
 
 	pr_info("mmap %x,%lx,%x\n", (unsigned int)PAGE_SHIFT,
 		(unsigned long)vma->vm_start,
-		(unsigned int)(vma->vm_end - vma->vm_start));
+		(unsigned int)(memsize));
 	return 0;
 }
 
@@ -635,9 +642,6 @@ static int vsp_release(struct inode *inode, struct file *filp)
 	pr_info("%s: instance_cnt %d\n", __func__, instance_cnt);
 
 	ret = atomic_dec_return(&vsp_instance_cnt);
-	codec_instance_count[vsp_fp->codec_id]--;
-	pr_debug("release codec_id %d counter %d\n", vsp_fp->codec_id,
-		codec_instance_count[vsp_fp->codec_id]);
 
 	if (vsp_fp->is_clock_enabled) {
 		pr_err("error occurred and close clock\n");
@@ -676,7 +680,6 @@ static struct miscdevice vsp_dev = {
 static int vsp_probe(struct platform_device *pdev)
 {
 	int ret;
-	int i = 0;
 	struct device *dev = &pdev->dev;
 	struct device_node *node = pdev->dev.of_node;
 	const struct of_device_id *of_id;
@@ -721,9 +724,6 @@ static int vsp_probe(struct platform_device *pdev)
 
 	vsp_hw_dev.vsp_parent_df_clk =
 		vsp_get_clk_src_name(clock_name_map, 0, max_freq_level);
-
-	for (i = 0; i < VSP_ENC; i++)
-		codec_instance_count[i] = 0;
 
 	ret = misc_register(&vsp_dev);
 	if (ret) {

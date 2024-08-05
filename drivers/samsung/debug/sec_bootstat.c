@@ -25,16 +25,15 @@
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/string.h>
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0)
-#include <soc/qcom/boot_stats.h>
-#endif
+#include <linux/io.h>
 
 #include <linux/sec_class.h>
 #include <linux/sec_bootstat.h>
+#include <linux/soc/sprd/sprd_systimer.h>
 
 #include "sec_debug_internal.h"
 
+#define BOOT_EVT_PREFIX_LK		"lk "
 #define BOOT_EVT_PREFIX			"!@Boot"
 #define BOOT_EVT_PREFIX_NONE		""
 #define BOOT_EVT_PREFIX_PLATFORM	": "
@@ -42,10 +41,15 @@
 #define BOOT_EVT_PREFIX_DEBUG		"_DEBUG: "
 #define BOOT_EVT_PREFIX_SYSTEMSERVER		"_SystemServer: "
 
-#define DEFAULT_BOOT_STAT_FREQ		32768
+#define DEFAULT_BOOT_STAT_FREQ		1000
 
 #define DELAY_TIME_EBS		10000
 #define MAX_EVENTS_EBS		100
+
+uint32_t bootloader_start;
+uint32_t bootloader_end;
+uint32_t bootloader_display;
+uint32_t bootloader_load_kernel;
 
 static struct device *sec_bsp_dev;
 
@@ -56,6 +60,7 @@ static unsigned int boot_complete_time = 0;
 static int events_ebs = 0;
 
 static const char *boot_prefix[16] = {
+	BOOT_EVT_PREFIX_LK,
 	BOOT_EVT_PREFIX BOOT_EVT_PREFIX_PLATFORM,
 	BOOT_EVT_PREFIX BOOT_EVT_PREFIX_RIL,
 	BOOT_EVT_PREFIX BOOT_EVT_PREFIX_DEBUG,
@@ -64,6 +69,7 @@ static const char *boot_prefix[16] = {
 };
 
 enum boot_events_prefix {
+	EVT_LK,
 	EVT_PLATFORM,
 	EVT_RIL,
 	EVT_DEBUG,
@@ -72,9 +78,11 @@ enum boot_events_prefix {
 };
 
 enum boot_events_type {
-	SYSTEM_START_UEFI,
-	SYSTEM_START_LINUXLOADER,
-	SYSTEM_START_LINUX,
+	SYSTEM_START_LK,
+#if 0
+	SYSTEM_LK_LOGO_DISPLAY,
+#endif
+	SYSTEM_END_LK,
 	SYSTEM_START_INIT_PROCESS,
 	PLATFORM_START_PRELOAD,
 	PLATFORM_END_PRELOAD,
@@ -136,12 +144,14 @@ static int num_events;
 static int boot_events_seq[NUM_BOOT_EVENTS];
 
 static struct boot_event boot_events[] = {
-	{SYSTEM_START_UEFI, EVT_INVALID,
-			"Uefi start", 0, 0},
-	{SYSTEM_START_LINUXLOADER, EVT_INVALID,
-			"Linux loader start", 0, 0},
-	{SYSTEM_START_LINUX, EVT_INVALID,
-			"Linux start", 0, 0},
+	{SYSTEM_START_LK, EVT_LK,
+			"start", 0},
+#if 0
+	{SYSTEM_LK_LOGO_DISPLAY, EVT_LK,
+			"logo display", 0},
+#endif
+	{SYSTEM_END_LK, EVT_LK,
+			"end", 0},
 	{SYSTEM_START_INIT_PROCESS, EVT_PLATFORM,
 			"start init process", 0, 0},
 	{PLATFORM_START_PRELOAD, EVT_PLATFORM,
@@ -258,6 +268,14 @@ LIST_HEAD(systemserver_init_time_list);
 
 LIST_HEAD(enhanced_boot_time_list);
 
+
+#if IS_ENABLED(CONFIG_SEC_BOOTSTAT)
+unsigned int get_boot_stat_time(void)
+{
+	return  sprd_systimer_read();
+}
+#endif
+
 static int __init boot_recovery(char *str)
 {
 	int temp = 0;
@@ -280,14 +298,11 @@ static int sec_boot_stat_proc_show(struct seq_file *m, void *v)
 {
 	size_t i;
 	unsigned long delta;
-	unsigned long freq = (unsigned long)get_boot_stat_freq();
+	unsigned long freq = DEFAULT_BOOT_STAT_FREQ;
 	unsigned long time, ktime, prev_time;
 	char boot_string[256];
 	struct device_init_time_entry *entry;
 	struct systemserver_init_time_entry *systemserver_entry;
-
-	if (!freq)
-		freq = DEFAULT_BOOT_STAT_FREQ;
 
 	seq_printf(m, "%-48s%s%13s%13s\n", "boot event", "time(msec)",
 				"ktime(msec)", "delta(msec)");
@@ -485,12 +500,9 @@ static int sec_enhanced_boot_stat_proc_show(struct seq_file *m, void *v)
 {
 	size_t i;
 	unsigned long delta;
-	unsigned long freq = (unsigned long)get_boot_stat_freq();
+	unsigned long freq = DEFAULT_BOOT_STAT_FREQ;
 	unsigned long time, ktime, prev_time;
 	struct enhanced_boot_time *enhanced_boot_time_entry;
-
-	if (!freq)
-		freq = DEFAULT_BOOT_STAT_FREQ;
 
 	seq_printf(m, "%-90s %6s %6s %6s\n", "boot event", "time",
 				"ktime", "delta");
@@ -547,11 +559,8 @@ static const struct file_operations sec_enhanced_boot_stat_proc_fops = {
 
 static int sec_suspend_resume_proc_show(struct seq_file *m, void *v)
 {
-	unsigned long freq = (unsigned long)get_boot_stat_freq();
+	unsigned long freq = DEFAULT_BOOT_STAT_FREQ;
 	size_t i;
-
-	if (!freq)
-		freq = DEFAULT_BOOT_STAT_FREQ;
 
 	seq_printf(m, "%-53s : %6s    %s\n",
 			"Suspend Resume Progress(Count)", "time", "ktime");
@@ -653,15 +662,21 @@ static int __init sec_bsp_init(void)
 	int err;
 	struct proc_dir_entry *entry;
 	struct proc_dir_entry *enhanced_entry;
-
+	void *bs_addr;
+	
 	entry = proc_create("boot_stat", 0444, NULL,
 				&sec_boot_stat_proc_fops);
 	if (!entry)
 		return -ENOMEM;
-
-	sec_boot_stat_record(SYSTEM_START_UEFI, bs_uefi_start);
-	sec_boot_stat_record(SYSTEM_START_LINUXLOADER, bs_linuxloader_start);
-	sec_boot_stat_record(SYSTEM_START_LINUX, bs_linux_start);
+	
+	bs_addr = ioremap(SEC_BOOT_STAT_BASE_ADDR, SEC_BOOT_STAT_MEM_SIZE);
+	bootloader_start=readl_relaxed(bs_addr+(SYSTEM_START_LK*sizeof(uint32_t)));
+	sec_boot_stat_record(SYSTEM_START_LK, bootloader_start);
+#if 0
+	sec_boot_stat_record(SYSTEM_LK_LOGO_DISPLAY, bootloader_display);
+#endif
+	bootloader_end=readl_relaxed(bs_addr+(SYSTEM_END_LK*sizeof(uint32_t)));
+	sec_boot_stat_record(SYSTEM_END_LK, bootloader_end);
 
 	enhanced_entry = proc_create("enhanced_boot_stat", 0444, NULL,
 				&sec_enhanced_boot_stat_proc_fops);

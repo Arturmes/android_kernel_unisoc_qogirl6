@@ -27,6 +27,13 @@
 #include "sprd_dsi.h"
 #include "sysfs_display.h"
 
+/*
+* Modify for Bug 1727673 - SI-23329: Kernel memory disclosure in dpu_enhance_set by writing to variables accessible with dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+#define SHARKL3_SLP_SIZE 6
+#define SHARKL5_SLP_SIZE 12
+
 static uint32_t bg_color;
 
 static ssize_t run_show(struct device *dev,
@@ -196,7 +203,20 @@ static ssize_t regs_offset_store(struct device *dev,
 {
 	struct sprd_dpu *dpu = dev_get_drvdata(dev);
 
-	str_to_u32_array(buf, 16, dpu->ctx.base_offset);
+/*
+* Modify for Bug 1727683 - SI-23330, Bug 1723972 - SI-23255.
+* Jira:KSG_M168_A01-2995
+*/
+	u32 input_param[2];
+
+	str_to_u32_array(buf, 16, input_param, 2);
+	if ((input_param[0] + input_param[1]) > dpu->ctx.base_offset[1]) {
+		pr_err("set reg off set over dpu register limit size\n");
+		return -EINVAL;
+	}
+
+	dpu->ctx.base_offset[0] = input_param[0];
+	dpu->ctx.base_offset[1] = input_param[1];
 
 	return count;
 }
@@ -237,6 +257,13 @@ static ssize_t wr_regs_store(struct device *dev,
 	uint32_t *value;
 	uint32_t i, actual_len;
 
+/*
+* Modify for Bug 1723972 - SI-23255: Stack buffer overflow in str_to_u32_array function, used in few store system calls.
+* Jira:KSG_M168_A01-2995
+*/
+	if(temp % 4 != 0)
+		return -EINVAL;
+
 	down(&dpu->ctx.refresh_lock);
 	if (!dpu->ctx.is_inited) {
 		pr_err("dpu is not initialized\n");
@@ -250,7 +277,12 @@ static ssize_t wr_regs_store(struct device *dev,
 		return -ENOMEM;
 	}
 
-	actual_len = str_to_u32_array(buf, 16, value);
+/*
+* Modify for Bug 1723972 - SI-23255: Stack buffer overflow in str_to_u32_array function, used in few store system calls.
+* Jira:KSG_M168_A01-2995
+*	actual_len = str_to_u32_array(buf, 16, value);
+*/
+	actual_len = str_to_u32_array(buf, 16, value, length);
 	if (!actual_len) {
 		pr_err("input format error\n");
 		up(&dpu->ctx.refresh_lock);
@@ -445,6 +477,11 @@ static ssize_t ltm_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_LTM, buf);
 	up(&ctx->refresh_lock);
 
@@ -497,6 +534,11 @@ static ssize_t gamma_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_GAMMA, buf);
 	up(&ctx->refresh_lock);
 
@@ -545,6 +587,11 @@ static ssize_t slp_lut_show(struct device *dev,
 		return -EINVAL;
 	}
 
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(data, 0, sizeof(data));
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_SLP_LUT, data);
 	up(&ctx->refresh_lock);
 
@@ -580,6 +627,11 @@ static ssize_t slp_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_SLP, buf);
 	up(&ctx->refresh_lock);
 
@@ -594,11 +646,26 @@ static ssize_t slp_write(struct file *fp, struct kobject *kobj,
 	struct sprd_dpu *dpu = dev_get_drvdata(dev);
 	struct dpu_context *ctx = &dpu->ctx;
 
+/*
+* Modify for Bug 1727673 - SI-23329: Kernel memory disclosure in dpu_enhance_set by writing to variables accessible with dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	if (!strcmp(ctx->version, "dpu-r2p0"))
+		attr->size = SHARKL3_SLP_SIZE;
+	if (!strcmp(ctx->version, "dpu-lite-r2p0") || !strcmp(ctx->version, "dpu-r3p0"))
+		attr->size = SHARKL5_SLP_SIZE;
+
 	if (!dpu->core->enhance_set)
 		return -EIO;
 
+/*
+* Modify for Bug 1727673 - SI-23329: Kernel memory disclosure in dpu_enhance_set by writing to variables accessible with dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*	if (off != 0)
+
+*/
 	/* I need to get my data in one piece */
-	if (off != 0)
+	if (off != 0 || count != attr->size)
 		return -EINVAL;
 
 	down(&ctx->refresh_lock);
@@ -607,7 +674,12 @@ static ssize_t slp_write(struct file *fp, struct kobject *kobj,
 
 	return count;
 }
-static BIN_ATTR_RW(slp, 48);
+/*
+* Modify for Bug 1727673 - SI-23329: Kernel memory disclosure in dpu_enhance_set by writing to variables accessible with dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*static BIN_ATTR_RW(slp, 48);
+*/
+static BIN_ATTR_RW(slp, 42);
 
 static ssize_t cm_read(struct file *fp, struct kobject *kobj,
 			struct bin_attribute *attr, char *buf,
@@ -632,6 +704,11 @@ static ssize_t cm_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_CM, buf);
 	up(&ctx->refresh_lock);
 
@@ -684,6 +761,11 @@ static ssize_t epf_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_EPF, buf);
 	up(&ctx->refresh_lock);
 
@@ -736,6 +818,11 @@ static ssize_t ud_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_UD, buf);
 	up(&ctx->refresh_lock);
 
@@ -809,6 +896,11 @@ static ssize_t cabc_hist_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->cabc_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_CABC_HIST, buf);
 	up(&ctx->cabc_lock);
 
@@ -839,6 +931,11 @@ static ssize_t cabc_hist_v2_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->cabc_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_CABC_HIST_V2, buf);
 	up(&ctx->cabc_lock);
 
@@ -867,6 +964,11 @@ static ssize_t cabc_cur_bl_read(struct file *fp, struct kobject *kobj,
 		pr_err("dpu is not initialized\n");
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_CABC_CUR_BL, buf);
 
 	return count;
@@ -898,6 +1000,11 @@ static ssize_t vsync_count_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_VSYNC_COUNT, buf);
 	up(&ctx->refresh_lock);
 
@@ -927,6 +1034,11 @@ static ssize_t frame_no_read(struct file *fp, struct kobject *kobj,
 		pr_err("dpu is not initialized\n");
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_FRAME_NO, buf);
 
 	return count;
@@ -1000,6 +1112,11 @@ static ssize_t cabc_state_read(struct file *fp, struct kobject *kobj,
 		count = attr->size - off;
 
 	down(&ctx->cabc_lock);
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_CABC_STATE, buf);
 	up(&ctx->cabc_lock);
 
@@ -1054,6 +1171,11 @@ static ssize_t hsv_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_HSV, buf);
 	up(&ctx->refresh_lock);
 
@@ -1101,6 +1223,11 @@ static ssize_t scl_show(struct device *dev,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(param, 0, sizeof(param));
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_SCL, param);
 	up(&ctx->refresh_lock);
 
@@ -1121,7 +1248,12 @@ static ssize_t scl_store(struct device *dev,
 		return -EIO;
 
 	down(&ctx->refresh_lock);
-	str_to_u32_array(buf, 10, param);
+/*
+* Modify for Bug 1723972 - SI-23255: Stack buffer overflow in str_to_u32_array function, used in few store system calls.
+* Jira:KSG_M168_A01-2995
+*	str_to_u32_array(buf, 10, param);
+*/
+	str_to_u32_array(buf, 10, param, 2);
 	dpu->core->enhance_set(ctx, ENHANCE_CFG_ID_SCL, param);
 	up(&ctx->refresh_lock);
 
@@ -1152,6 +1284,11 @@ static ssize_t lut3d_read(struct file *fp, struct kobject *kobj,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_LUT3D, buf);
 	up(&ctx->refresh_lock);
 
@@ -1248,6 +1385,11 @@ static ssize_t luts_print_write(struct file *fp, struct kobject *kobj,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(buf, 0, count);
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_UPDATE_LUTS, buf);
 	up(&ctx->refresh_lock);
 
@@ -1302,6 +1444,11 @@ static ssize_t status_show(struct device *dev,
 		up(&ctx->refresh_lock);
 		return -EINVAL;
 	}
+/*
+* Modify for Bug 1723515 - SI-23328: Kernel memory disclosure in functions using dpu_enhance_get.
+* Jira:KSG_M168_A01-2995
+*/
+	memset(&en, 0, sizeof(en));
 	dpu->core->enhance_get(ctx, ENHANCE_CFG_ID_ENABLE, &en);
 	up(&ctx->refresh_lock);
 

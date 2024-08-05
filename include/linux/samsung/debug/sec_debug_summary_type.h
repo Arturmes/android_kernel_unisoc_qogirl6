@@ -43,7 +43,7 @@ struct sec_debug_summary_kernel_log {
 	uint64_t first_idx_paddr;
 	uint64_t next_idx_paddr;
 	uint64_t log_paddr;
-	uint64_t size_paddr;
+	uint64_t size;
 };
 
 struct rgb_bit_info {
@@ -294,22 +294,8 @@ struct sec_debug_summary_kconst {
 	int vmap_stack;
 };
 
-
-struct sec_debug_summary_msm_dump_info {
-	uint64_t cpu_data_paddr;
-	uint64_t cpu_buf_paddr;
-	uint32_t cpu_ctx_size; //2048
-	uint32_t offset; //0x10
-
-	//this_cpu_offset = cpu_ctx_size*cpu+offset
-	// x0 = *((unsigned long long *)(cpu_buf_paddr + this_cpu_offset) + 0x0)
-	// x1 = *((unsigned long long *)(cpu_buf_paddr + this_cpu_offset) + 0x1)
-	// ...
-};
-
 struct sec_debug_summary_cpu_context {
 	uint64_t sec_debug_core_reg_paddr;
-	struct sec_debug_summary_msm_dump_info msm_dump_info;
 };
 
 struct struct_aplpm_state {

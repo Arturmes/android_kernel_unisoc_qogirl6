@@ -7,6 +7,8 @@
 #include <linux/miscdevice.h>
 
 #define DEVICE_INIT_TIME_100MS		100000
+#define SEC_BOOT_STAT_BASE_ADDR		0x8F1FEFF4
+#define SEC_BOOT_STAT_MEM_SIZE		0xC
 
 struct device_init_time_entry {
 	struct list_head next;

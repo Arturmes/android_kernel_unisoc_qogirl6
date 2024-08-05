@@ -480,8 +480,8 @@ static int asoc_sprd_card_dai_link_of(struct device_node *node,
 	struct device_node *codec = NULL;
 	char prop[128];
 	char *prefix = "";
-	int ret, cpu_args;
-	u32 val;
+	int ret, ret2, cpu_args, i;
+	u32 val, multi_codecs = 0;
 
 	/* For single DAI link & old style of DT node */
 	if (is_top_level_node)
@@ -502,6 +502,10 @@ static int asoc_sprd_card_dai_link_of(struct device_node *node,
 			__func__, cpu, codec);
 		goto dai_link_of_err;
 	}
+
+	ret = of_property_read_u32(node, "multi-codecs", &multi_codecs);
+	if (ret == 0)
+		pr_info("%s multi-codecs detected\n", __func__);
 
 	ret = asoc_sprd_card_parse_daifmt(node, priv, codec, prefix, idx);
 	if (ret < 0)
@@ -529,6 +533,28 @@ static int asoc_sprd_card_dai_link_of(struct device_node *node,
 		}
 	}
 
+	if (multi_codecs) {
+		pr_info("%s multi_codecs %d, codec_name %s codec_dai_name %s cpu_dai_name %s\n",
+			__func__, multi_codecs, dai_link->codec_name,
+			dai_link->codec_dai_name,
+			dai_link->cpu_dai_name);
+		ret2 = snd_soc_of_get_dai_link_codecs(dev, codec, dai_link);
+		if (ret2 < 0) {
+			dai_link->codecs = NULL;
+			dai_link->num_codecs = 0;
+			pr_warn("%s ret %d, ret2 %d, ret3 %d\n", __func__, ret, ret2);
+			if (ret2 == -EPROBE_DEFER || ret == -EPROBE_DEFER)
+				ret = -EPROBE_DEFER;
+
+			goto dai_link_of_err;
+		}
+
+		for (i = 0; i < dai_link->num_codecs; i++) {
+			pr_info("multi codecs info: codec[%d], codec_name %s codec_dai_name %s\n",
+				i, dai_link->codecs[i].name, dai_link->codecs[i].dai_name);
+		}
+	}
+
 	if (!dai_link->cpu_dai_name || !dai_link->codec_dai_name) {
 		dev_err(dev, "%s: xx_dai_name is NULL\n", __func__);
 		goto dai_link_of_err;
@@ -548,15 +574,23 @@ static int asoc_sprd_card_dai_link_of(struct device_node *node,
 	if (ret)
 		goto dai_link_of_err;
 
-	dev_info(dev, "\tname : %s\n", dai_link->name ? dai_link->name :
+	dev_info(dev, "name : %s\n", dai_link->name ? dai_link->name :
 		"null");
-	dev_info(dev, "\tstream_name : %s\n", dai_link->stream_name ?
+	dev_info(dev, "stream_name : %s\n", dai_link->stream_name ?
 		dai_link->stream_name : "null");
-	dev_dbg(dev, "\tformat : %04x\n", dai_link->dai_fmt);
-	dev_dbg(dev, "\tcpu : %s / %d\n",
+	dev_dbg(dev, "format : %x\n", dai_link->dai_fmt);
+	dev_dbg(dev, "cpu : %s %d\n",
 		dai_link->cpu_dai_name, dai_props->cpu_dai.sysclk);
-	dev_dbg(dev, "\tcodec : %s / %d\n",
+	dev_dbg(dev, "codec : %s %d\n",
 		dai_link->codec_dai_name, dai_props->codec_dai.sysclk);
+
+
+	/* Asoc use codecs bind, clear codec_dai_name and codec_of_node */
+	if (multi_codecs && dai_link->num_codecs > 1) {
+		dai_link->codec_dai_name = NULL;
+		dai_link->codec_of_node = NULL;
+		dai_link->codec_name = NULL;
+	}
 
 	/*
 	 * In soc_bind_dai_link() will check cpu name after

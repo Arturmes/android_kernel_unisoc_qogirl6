@@ -213,6 +213,7 @@ static int gnss_ring_write(struct gnss_ring_t *pring, char *buf, int len)
 		     buf, pring, len);
 		return -GNSS_ERR_BAD_PARAM;
 	}
+
 	pstart = gnss_ring_start(pring);
 	pend = gnss_ring_end(pring);
 	GNSS_DEBUG("pstart = %p, pend = %p, buf = %p, len = %d, pring->wp = %p",

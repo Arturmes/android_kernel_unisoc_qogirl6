@@ -539,7 +539,6 @@ int wcn_download_image_ufs(struct wcn_device *wcn_dev)
 			return 1;
 		strncpy(firmware_file_path, wcn_dev->file_path_ext_ufs,
 			sizeof(firmware_file_path));
-		gnss_file_path_set(firmware_file_path);
 		fstab_ab(wcn_dev);
 	} else {
 		if (!(wcn_dev->file_path_ufs))
@@ -549,6 +548,7 @@ int wcn_download_image_ufs(struct wcn_device *wcn_dev)
 		fstab_ab(wcn_dev);
 	}
 
+	gnss_file_path_set(firmware_file_path);
 	WCN_INFO("load config ufs file:%s\n", firmware_file_path);
 	file = filp_open(firmware_file_path, O_RDONLY, 0);
 	if (IS_ERR(file)) {
@@ -588,7 +588,6 @@ int wcn_download_image_emmc(struct wcn_device *wcn_dev)
 		strncpy(firmware_file_path, wcn_dev->file_path_ext,
 				sizeof(firmware_file_path));
 		fstab_ab(wcn_dev);
-		gnss_file_path_set(firmware_file_path);
 	} else {
 		if (!(wcn_dev->file_path))
 			return 1;
@@ -597,6 +596,7 @@ int wcn_download_image_emmc(struct wcn_device *wcn_dev)
 		fstab_ab(wcn_dev);
 	}
 
+	gnss_file_path_set(firmware_file_path);
 	WCN_INFO("load config emmc file:%s\n", firmware_file_path);
 	file = filp_open(firmware_file_path, O_RDONLY, 0);
 	if (IS_ERR(file)) {

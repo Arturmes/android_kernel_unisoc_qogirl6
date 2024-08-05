@@ -220,5 +220,4 @@ source "drivers/trusty/Kconfig"
 source "drivers/samsung/Kconfig"
 
 source "drivers/gpu/mali/Kconfig"
-
 endmenu

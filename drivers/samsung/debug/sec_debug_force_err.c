@@ -31,12 +31,6 @@
 #include <linux/irq.h>
 #include <linux/slab.h>
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,4,0)
-#include <linux/qcom_scm.h>
-#else
-#include <soc/qcom/scm.h>
-#endif
-
 #include <linux/sec_debug.h>
 
 #include "sec_debug_internal.h"
@@ -86,132 +80,6 @@ static void __simulate_apps_wdog_bite(void)
 	pr_emerg("Simualtion of apps watch dog bite failed\n");
 }
 
-#if defined(CONFIG_SEC_DEBUG_SEC_WDOG_BITE) || \
-	defined(CONFIG_SEC_USER_RESET_DEBUG_TEST)
-static void __simulate_secure_wdog_bite(void)
-{
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,4,0)
-	qcom_scm_sec_wdog_trigger();
-#else
-#define SCM_SVC_SEC_WDOG_TRIG	0x8
-	struct scm_desc desc = {
-		.args[0] = 0,
-		.arginfo = SCM_ARGS(1),
-	};
-
-	scm_call2(SCM_SIP_FNID(SCM_SVC_BOOT,
-			SCM_SVC_SEC_WDOG_TRIG), &desc);
-#endif
-	/* if we hit, scm_call has failed */
-	pr_emerg("simulation of secure watch dog bite failed\n");
-	__simulate_apps_wdog_bite();
-}
-#endif
-
-#if defined(CONFIG_ARCH_MSM8226) || defined(CONFIG_ARCH_MSM8974)
-/*
- * Misc data structures needed for simulating bus timeout in
- * camera
- */
-
-#define HANG_ADDRESS 0xfda10000
-
-struct clk_pair {
-	const char *dev;
-	const char *clk;
-};
-
-static struct clk_pair bus_timeout_camera_clocks_on[] = {
-	/*
-	 * gcc_mmss_noc_cfg_ahb_clk should be on but right
-	 * now this clock is on by default and not accessable.
-	 * Update this table if gcc_mmss_noc_cfg_ahb_clk is
-	 * ever not enabled by default!
-	 */
-	{
-		.dev = "fda0c000.qcom,cci",
-		.clk = "camss_top_ahb_clk",
-	},
-	{
-		.dev = "fda10000.qcom,vfe",
-		.clk = "iface_clk",
-	},
-};
-
-static struct clk_pair bus_timeout_camera_clocks_off[] = {
-	{
-		.dev = "fda10000.qcom,vfe",
-		.clk = "camss_vfe_vfe_clk",
-	}
-};
-
-static void bus_timeout_clk_access(struct clk_pair bus_timeout_clocks_off[],
-				struct clk_pair bus_timeout_clocks_on[],
-				int off_size, int on_size)
-{
-	size_t i;
-
-	/*
-	 * Yes, none of this cleans up properly but the goal here
-	 * is to trigger a hang which is going to kill the rest of
-	 * the system anyway
-	 */
-
-	for (i = 0; i < on_size; i++) {
-		struct clk *this_clock;
-
-		this_clock = clk_get_sys(bus_timeout_clocks_on[i].dev,
-					bus_timeout_clocks_on[i].clk);
-		if (!IS_ERR(this_clock))
-			if (clk_prepare_enable(this_clock))
-				pr_warn("Device %s: Clock %s not enabled",
-					bus_timeout_clocks_on[i].clk,
-					bus_timeout_clocks_on[i].dev);
-	}
-
-	for (i = 0; i < off_size; i++) {
-		struct clk *this_clock;
-
-		this_clock = clk_get_sys(bus_timeout_clocks_off[i].dev,
-					 bus_timeout_clocks_off[i].clk);
-		if (!IS_ERR(this_clock))
-			clk_disable_unprepare(this_clock);
-	}
-}
-
-static void simulate_bus_hang(void)
-{
-	/* This simulates bus timeout on camera */
-	int ret;
-	uint32_t dummy_value;
-	uint32_t address = HANG_ADDRESS;
-	void *hang_address;
-	struct regulator *r;
-	unsigned long time_out_jiffies;
-
-	/* simulate */
-	hang_address = ioremap(address, SZ_4K);
-	r = regulator_get(NULL, "gdsc_vfe");
-	ret = IS_ERR(r);
-	if (!ret)
-		regulator_enable(r);
-	else
-		pr_emerg("Unable to get regulator reference\n");
-
-	bus_timeout_clk_access(bus_timeout_camera_clocks_off,
-				bus_timeout_camera_clocks_on,
-				ARRAY_SIZE(bus_timeout_camera_clocks_off),
-				ARRAY_SIZE(bus_timeout_camera_clocks_on));
-
-	dummy_value = readl_relaxed(hang_address);
-	time_out_jiffies = jiffies + msecs_to_jiffies(DELAY_TIME);
-	while (time_is_after_jiffies(time_out_jiffies))
-		udelay(1);
-	/* if we hit here, test had failed */
-	pr_emerg("Bus timeout test failed...0x%x\n", dummy_value);
-	iounmap(hang_address);
-}
-#else /* defined(CONFIG_ARCH_MSM8226) || defined(CONFIG_ARCH_MSM8974) */
 static void simulate_bus_hang(void)
 {
 	void __iomem *p;
@@ -223,7 +91,6 @@ static void simulate_bus_hang(void)
 	pr_info("*p = %x\n", *(unsigned int *)p);
 	pr_emerg("Clk may be enabled.Try again if it reaches here!\n");
 }
-#endif /* defined(CONFIG_ARCH_MSM8226) || defined(CONFIG_ARCH_MSM8974) */
 
 static void __simulate_dabort(void)
 {
@@ -326,21 +193,18 @@ static int force_error(const char *val, const struct kernel_param *kp)
 		{ "memcorrupt",
 			NULL,
 			&__simulate_memcorrupt },
-#ifdef CONFIG_SEC_DEBUG_SEC_WDOG_BITE
-		{ "secdogbite",
-			"simulating secure watch dog bite!",
-			&__simulate_secure_wdog_bite },
-#endif
 #ifdef CONFIG_SEC_USER_RESET_DEBUG_TEST
 		{ "KP",
 			"Generating a data abort exception!",
 			&__simulate_dabort },
 		{ "DP",
 			NULL,
-			&force_watchdog_bark },
+			&__simulate_apps_wdog_bark },
+#if 0
 		{ "WP",
 			"simulating secure watch dog bite!",
 			&__simulate_secure_wdog_bite },
+#endif
 #endif
 #ifdef CONFIG_FREE_PAGES_RDONLY
 		{ "pageRDcheck",

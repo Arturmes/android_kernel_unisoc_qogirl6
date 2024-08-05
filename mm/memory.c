@@ -3738,7 +3738,11 @@ int finish_fault(struct vm_fault *vmf)
 }
 
 static unsigned long fault_around_bytes __read_mostly =
+#ifdef CONFIG_FAULT_AROUND_4KB
+	rounddown_pow_of_two(4096);
+#else
 	rounddown_pow_of_two(65536);
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 static int fault_around_bytes_get(void *data, u64 *val)
@@ -4573,8 +4577,10 @@ unsigned int __handle_speculative_fault(struct mm_struct *mm,
 
 	put_vma(vma);
 
-	if (ret != VM_FAULT_RETRY)
+	if (ret != VM_FAULT_RETRY) {
+		check_sync_rss_stat(current);
 		count_vm_event(SPECULATIVE_PGFAULT);
+	}
 
 	/*
 	 * The task may have entered a memcg OOM situation but

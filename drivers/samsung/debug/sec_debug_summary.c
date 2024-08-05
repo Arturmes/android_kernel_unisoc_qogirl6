@@ -35,6 +35,10 @@
 #include "sec_debug_internal.h"
 #include "sec_debug_summary_extern.h"
 
+
+#define	SEC_DEBUG_SHARED_MEM_SIZE		(0x00008000)
+#define SEC_DEBUG_SHARED_MEM_ADDR		(0x8F8F8000)
+
 static struct sec_debug_summary *secdbg_summary;
 static struct sec_debug_summary_data_apss *secdbg_apss;
 
@@ -246,6 +250,7 @@ static void __init summary_add_info_mon(const char *name,
 #define ADD_STR_TO_INFOMON(pstr)					\
 	summary_add_info_mon(#pstr, -1, (uint64_t)__pa(pstr))
 
+#if 0
 static void __init summary_add_var_mon(char *name,
 		unsigned int size, phys_addr_t pa)
 {
@@ -300,6 +305,7 @@ do {									\
 	strlcat(name, _strindex, ARRAY_SIZE(name));			\
 	summary_add_var_mon(name, -1, __pa(&pstrarr));			\
 } while (0)
+#endif
 
 #ifdef __SEC_DEBUG_SUMMARY_BUILD_ROOT
 #define summary_set_build_root(s)	__summary_set_build_root(s)
@@ -322,27 +328,13 @@ static void __init summary_init_infomon(void)
 	summary_add_info_mon("Hardware name", -1, __pa(sec_debug_arch_desc));
 }
 
+#if 0
 #if defined(CONFIG_SEC_DEBUG_SCHED_LOG_PER_CPU) 
 #define phys_addr_of_secdbg_last_pet_ns_paddr(__member)	\
 	(secdbg_paddr + offsetof(struct sec_debug_last_pet_ns, __member))
 #else
 #define phys_addr_of_secdbg_paddr(__member)	\
 	(secdbg_paddr + offsetof(struct sec_debug_log, __member))
-#endif
-
-#ifdef CONFIG_SEC_DEBUG_VERBOSE_SUMMARY_HTML
-static void __init __summary_init_varmon_verbose(void)
-{
-	size_t i;
-
-	for (i = 0; i < num_present_cpus(); i++) {
-		ADD_STR_ARRAY_TO_VARMON(cpu_state[i], i, CPU_STAT_CORE);
-		ADD_ARRAY_TO_VARMON(cpu_frequency[i], i, CPU_FREQ_CORE);
-		ADD_ARRAY_TO_VARMON(cpu_volt[i], i, CPU_VOLT_CORE);
-	}
-}
-#else
-static void __init __summary_init_varmon_verbose(void) { }
 #endif
 
 static void __init summary_init_varmon(void)
@@ -377,16 +369,8 @@ static void __init summary_init_varmon(void)
 	} else
 		pr_emerg("**** secdbg_log or secdbg_paddr is not initialized ****\n");
 #endif
-
-#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0)
-	ADD_VAR_TO_VARMON(boot_reason);
-	ADD_VAR_TO_VARMON(cold_boot);
-#endif
-#endif
-
-	__summary_init_varmon_verbose();
 }
+#endif
 
 #if defined(CONFIG_SEC_DEBUG_SCHED_LOG_PER_CPU) 
 DECLARE_PER_CPU(struct sec_debug_log, sec_debug_log_cpu);
@@ -453,24 +437,6 @@ static void __init summary_init_sched_log(void)
 #endif
 }
 
-#ifdef CONFIG_QCOM_MEMORY_DUMP_V2
-static struct sec_debug_summary_msm_dump_info msm_dump_info_cached;
-
-void sec_debug_summary_bark_dump(void *s_cpu_data, void *cpu_buf,
-		uint32_t cpu_ctx_size)
-{
-	msm_dump_info_cached.cpu_data_paddr = (uint64_t)virt_to_phys(s_cpu_data);
-	msm_dump_info_cached.cpu_buf_paddr = (uint64_t)virt_to_phys(cpu_buf);
-	msm_dump_info_cached.cpu_ctx_size = cpu_ctx_size;
-	msm_dump_info_cached.offset = 0x10;	/* 16 bytes */
-}
-
-static void *get_wdog_regsave_paddr(void)
-{
-	return (void *)__pa(&(msm_dump_info_cached.cpu_buf_paddr));
-}
-#endif
-
 static void __init summary_init_core_reg(void)
 {
 	struct sec_debug_summary_cpu_context *cpu_reg = &(secdbg_apss->cpu_reg);
@@ -480,16 +446,6 @@ static void __init summary_init_core_reg(void)
 
 	pr_info("sec_debug_core_reg_paddr = 0x%llx\n",
 				cpu_reg->sec_debug_core_reg_paddr);
-
-#ifdef CONFIG_QCOM_MEMORY_DUMP_V2
-	/* setup qc core reg info */
-	memcpy(&(cpu_reg->msm_dump_info), &msm_dump_info_cached,
-			sizeof(struct sec_debug_summary_msm_dump_info));
-
-	if (!cpu_reg->msm_dump_info.cpu_data_paddr ||
-	    !cpu_reg->msm_dump_info.cpu_buf_paddr)
-		pr_warn("msm_dump_info is no initialized correctly!\n");
-#endif
 }
 
 static void __init summary_init_avc_log(void)
@@ -628,94 +584,32 @@ static void __init summary_set_kallsyms_info(void)
 static void summary_set_lpm_info_runqueues(void)
 {
 	secdbg_apss->aplpm.p_runqueues = virt_to_phys((void *)&runqueues);
-#ifdef CONFIG_SCHED_WALT
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0)
-	secdbg_apss->aplpm.cstate_offset = offsetof(struct rq, cstate);
-#endif
-#endif
-}
-
-#ifdef CONFIG_SCHED_WALT
-int __weak get_num_clusters(void)
-{
-	return num_clusters;
-}
-#endif
-
-static void __init summary_set_lpm_info_cluster(void)
-{
-#ifdef CONFIG_SCHED_WALT
-	secdbg_apss->aplpm.num_clusters = get_num_clusters();
-	secdbg_apss->aplpm.p_cluster = virt_to_phys((void *)sched_cluster);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0)
-	secdbg_apss->aplpm.dstate_offset = offsetof(struct sched_cluster, dstate);
-#endif
-#endif
 }
 
 static void __init sec_debug_summary_external_init(void)
 {
 	summary_set_kallsyms_info();
-	summary_set_lpm_info_cluster();
 	summary_set_lpm_info_runqueues();
 
 	sec_debug_summary_set_klog_info(secdbg_apss);
-	sec_debug_summary_set_msm_memdump_info(secdbg_apss);
-#if IS_ENABLED(CONFIG_QCOM_RTB)
-	sec_debug_summary_set_rtb_info(secdbg_apss);
-#endif
 	summary_init_coreinfo(secdbg_apss);
 }
 
-#if defined(CONFIG_QCOM_SMEM)
-static int __init __qcom_smem_alloc_secdbg_summary(size_t size)
-{
-	int err;
-
-	/* set summary address in smem for other subsystems to see */
-	err = qcom_smem_alloc(QCOM_SMEM_HOST_ANY, SMEM_ID_VENDOR2, size);
-	if (err && err != -EEXIST) {
-		pr_err("smem alloc failed! (%d)\n", err);
-		return err;
-	}
-
-	secdbg_summary = qcom_smem_get(QCOM_SMEM_HOST_ANY,
-			SMEM_ID_VENDOR2, &size);
-	if (!secdbg_summary || size < sizeof(struct sec_debug_summary)) {
-		pr_err("smem get failed!\n");
-		return -ENOMEM;
-	}
-
-	return 0;
-}
-#else
-static inline int __qcom_smem_alloc_secdbg_summary(size_t size) { return -ENODEV; }
-#endif
-
-#if defined(CONFIG_MSM_SMEM)
-static int __init __msm_smem_alloc_secdbg_summary(size_t size)
-{
-	secdbg_summary = smem_alloc(SMEM_ID_VENDOR2, size, 0, SMEM_ANY_HOST_FLAG);
-	if (!secdbg_summary) {
-		pr_err("smem alloc failed!\n");
-		return -ENOMEM;
-	}
-
-	return 0;
-}
-#else
-static inline int __msm_smem_alloc_secdbg_summary(size_t size) { return -ENODEV; }
-#endif
-
 static int __init __smem_alloc_secdbg_summary(size_t size)
 {
-	int err;
+	if (sec_debug_is_enabled())
+		secdbg_summary = ioremap_wc(SEC_DEBUG_SHARED_MEM_ADDR, size);
+	else
+		secdbg_summary = ioremap_cache(SEC_DEBUG_SHARED_MEM_ADDR, size);
 
-	err = __qcom_smem_alloc_secdbg_summary(size);
-	if (unlikely(err) && IS_ENABLED(CONFIG_MSM_SMEM))
-		err = __msm_smem_alloc_secdbg_summary(size);
+	if ((!secdbg_summary) || (size > SEC_DEBUG_SHARED_MEM_SIZE)) {
+		pr_err("ERROR! init failed!\n");
+		return -EFAULT;
+	}
 
-	return err;
+	pr_info("vaddr=0x%p paddr=0x%x size=0x%zx\n",
+			secdbg_summary, SEC_DEBUG_SHARED_MEM_ADDR, size);
+	return 0;
 }
 
 static int _sec_debug_summary_init(void)
@@ -723,8 +617,7 @@ static int _sec_debug_summary_init(void)
 	int err;
 	size_t size = sizeof(struct sec_debug_summary);
 
-	pr_info("SMEM_ID_VENDOR2=0x%x size=0x%lx\n",
-		(unsigned int)SMEM_ID_VENDOR2, size);
+	pr_info("sec_debug_summary size=0x%lx\n", size);
 
 	err = __smem_alloc_secdbg_summary(size);
 	if (err) {
@@ -734,26 +627,11 @@ static int _sec_debug_summary_init(void)
 
 	memset_io(secdbg_summary, 0x0, size);
 
-	secdbg_summary->_apss =
-		qcom_smem_virt_to_phys(&secdbg_summary->priv.apss);
-	secdbg_summary->_rpm =
-		qcom_smem_virt_to_phys(&secdbg_summary->priv.rpm);
-	secdbg_summary->_modem =
-		qcom_smem_virt_to_phys(&secdbg_summary->priv.modem);
-	secdbg_summary->_dsps =
-		qcom_smem_virt_to_phys(&secdbg_summary->priv.dsps);
+	secdbg_summary->_apss = SEC_DEBUG_SHARED_MEM_ADDR
+		+ offsetof(struct sec_debug_summary, priv)
+		+ offsetof(struct sec_debug_summary_private, apss);
 
-	pr_info("apss(%llx) rpm(%llx) modem(%llx) dsps(%llx)\n",
-			secdbg_summary->_apss,
-			secdbg_summary->_rpm,
-			secdbg_summary->_modem,
-			secdbg_summary->_dsps);
-
-	/* FIXME: 'sec_debug_summary_secure_app_addr_size' is not called
-	 * anywhere. It seems that, following two lines are deprecated.
-	 */
-	secdbg_summary->secure_app_start_addr = tzapps_start_addr;
-	secdbg_summary->secure_app_size = tzapps_size;
+	pr_info("apss(%llx)\n", secdbg_summary->_apss);
 
 	secdbg_apss = &secdbg_summary->priv.apss;
 
@@ -761,11 +639,10 @@ static int _sec_debug_summary_init(void)
 	strlcpy(secdbg_apss->state, "Init", sizeof(secdbg_apss->state));
 	secdbg_apss->nr_cpus = num_present_cpus();
 	secdbg_apss->dump_sink_paddr = get_pa_dump_sink();
-	secdbg_apss->tz_core_dump = get_wdog_regsave_paddr();
 
 	summary_init_debug_arch_desc();
 	summary_init_infomon();
-	summary_init_varmon();
+//	summary_init_varmon();
 	summary_init_sched_log();
 	summary_init_avc_log();
 	summary_init_core_reg();
@@ -785,6 +662,8 @@ static int _sec_debug_summary_init(void)
 	secdbg_summary->magic[1] = SEC_DEBUG_SUMMARY_MAGIC1;
 	secdbg_summary->magic[2] = SEC_DEBUG_SUMMARY_MAGIC2;
 	secdbg_summary->magic[3] = SEC_DEBUG_SUMMARY_MAGIC3;
+
+	pr_info("init done\n");
 
 	return 0;
 }
@@ -817,7 +696,7 @@ struct platform_driver sec_debug_summary_driver = {
 		.name 	= "sec_debug_summary",
 		.owner	= THIS_MODULE,
 #ifdef CONFIG_OF
-		.of_match_table = sec_debug_summary_dt_ids,
+		.of_match_table = of_match_ptr(sec_debug_summary_dt_ids),
 #endif
 	},
 };

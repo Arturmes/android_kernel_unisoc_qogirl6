@@ -257,7 +257,7 @@
 };
 
 &vbmeta {
-	parts = "vbmeta,socko,odmko,boot,recovery,dtbo,l_modem,pm_sys,l_ldsp,l_gdsp,l_agdsp,l_cdsp";
+	parts = "vbmeta,socko,odmko,boot,recovery,dtbo,l_modem,pm_sys,l_ldsp,l_gdsp,l_agdsp";
 };
 
 &reserved_memory {
@@ -567,7 +567,7 @@
 		reg = <0x6a>;
 		phys = <&hsphy>;
 		monitored-battery = <&bat>;
-		extcon = <&extcon_gpio>;
+		extcon = <&pmic_typec>;
 		vddvbus:otg-vbus {
 			regulator-name = "vddvbus";
 		};
@@ -699,13 +699,14 @@
 	first-calib-capacity = <50>;
 	fgu-capacity-track;
 	fullbatt-track-end-vol = <4345>;
-	fullbatt-track-end-cur = <125>;
+	fullbatt-track-end-cur = <130>;
 	phys = <&hsphy>;
 };
 
 &usb {
-	extcon = <&extcon_gpio>, <&pmic_typec>;
+	extcon = <&pmic_typec>, <&pmic_typec>;
 	vbus-supply = <&vddvbus>;
+	use_second_charger_detct;
 };
 
 &vddldo0 {
@@ -716,6 +717,55 @@
 	sprd,hw-channels = <2 0x18cc>, <3 0x18cc>, <13 0x1854>, <15 0x1874>,
 			 <17 0x1844>,<19 0x1844>, <21 0x1864>, <30 0x1820>,
 			 <35 0x19b8>, <39 0x19ac>;
+};
+
+&sprd_headset {
+	status = "okay";
+	extcon = <&pmic_typec>;
+	mic-gpios = <&ap_gpio 16 GPIO_ACTIVE_HIGH>;
+	lr-gpios = <&ap_gpio 15 GPIO_ACTIVE_HIGH>;
+	sprd,3pole-adc-threshold = <112>;
+};
+
+&sound_vbc_v4_sprd_codec {
+	status = "okay";
+	sprd-audio-card,routing =
+		"HPMIC Pin", "HP Mic Jack",
+		"MIC Pin", "Mic Jack",
+		"MIC2 Pin", "Aux Mic Jack",
+		"HeadPhone Jack", "HP Pin",
+		"Ext Spk", "SPK Pin",
+		"UCP1301 SPK ON", "SPK Pin",
+		"Ext Spk", "UCP1301 SPK",
+		"DMIC Pin", "DMic Jack",
+		"DMIC1 Pin", "DMic1 Jack",
+		"Ext Ear", "EAR Pin";
+
+	/* 35: ucp1301 normal ap01 */
+	sprd-audio-card,dai-link@53 {
+		ignore-suspend = <1>;
+		link-name = "BE_NORMAL_AP01_UCPSPK";
+		stream-name = "BE_ST_NORMAL_AP01_UCPSPK";
+		no-pcm = <1>;
+		dpcm-playback = <1>;
+		be-id = <0>;
+		dai-format = "i2s";
+		plat {
+			sound-dai = <&sprd_route_pcm>;
+		};
+		cpu {
+			sound-dai = <&vbc_v4 31>;
+		};
+		codec {
+			sound-dai = <&ucp1301_spk 0>;
+		};
+	};
+
+	/*
+	 * node 54 and node 55 (index 36 and 37) are reserved for
+	 * "ucp1301-spk2" and "ucp1301-rcv"
+	 * nodes from 56 to 67 (index from 38 to 49) are used by HIFI
+	 */
 };
 
 &dvfs_dcdc_cpu0_supply {

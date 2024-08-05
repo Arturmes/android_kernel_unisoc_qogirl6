@@ -613,8 +613,14 @@ static ssize_t sel_write_backtrace_filter(struct file *file,
 		goto out;
 
 	length = -EINVAL;
-	if (sscanf(page, "%s", new_value) != 1)
-		goto out;
+
+/*
+*Modified for code scaning. SI23345[ANDROID][A3CORE] Heap buffer overflow in backtrace_filter driver (sel_write_backtrace_filter)
+*Jira:KSG_M168_A01-2995
+*	if (sscanf(page, "%s", new_value) != 1)
+*		goto out;
+*/
+	strlcpy(new_value, page, AVC_BACKTRACE_COMM_LEN);
 
 	if (new_value) {
 		length = -ENOMEM;

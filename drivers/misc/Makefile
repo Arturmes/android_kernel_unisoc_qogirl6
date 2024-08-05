@@ -76,6 +76,7 @@ lkdtm-$(CONFIG_LKDTM)		+= lkdtm_usercopy.o
 obj-y 				+= sprd_audio/
 obj-y				+= sprd_map/
 obj-$(CONFIG_SPRD_SOCID)	+= sprd_soc_id.o
+obj-$(CONFIG_LEDS_SC27XX_VIBRA)	+= vibrator/
 
 KCOV_INSTRUMENT_lkdtm_rodata.o	:= n
 CFLAGS_lkdtm_rodata.o		+= $(DISABLE_LTO)

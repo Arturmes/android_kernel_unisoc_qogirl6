@@ -52,9 +52,9 @@ static struct long_pressed_event_state *long_key_state = &__long_key_state;
 
 static inline void __reset_pon_s2_ctrl_reset(void)
 {
-	qpnp_control_s2_reset_onoff(0);
+	sprd_7sreset_onoff(0);
 	udelay(1000);
-	qpnp_control_s2_reset_onoff(1);
+	sprd_7sreset_onoff(1);
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,14,0)

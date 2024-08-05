@@ -124,7 +124,12 @@ static ssize_t hporch_store(struct device *dev,
 	u32 val[4] = {0};
 	int len;
 
-	len = str_to_u32_array(buf, 0, val);
+/*
+* Modify for Bug 1723972 - SI-23255: Stack buffer overflow in str_to_u32_array function, used in few store system calls.
+* Jira:KSG_M168_A01-2995
+*	len = str_to_u32_array(buf, 0, val);
+*/
+	len = str_to_u32_array(buf, 0, val, 4);
 	drm_display_mode_to_videomode(&panel->info.mode, &vm);
 
 	switch (len) {
@@ -179,7 +184,12 @@ static ssize_t vporch_store(struct device *dev,
 	u32 val[4] = {0};
 	int len;
 
-	len = str_to_u32_array(buf, 0, val);
+/*
+* Modify for Bug 1723972 - SI-23255: Stack buffer overflow in str_to_u32_array function, used in few store system calls.
+* Jira:KSG_M168_A01-2995
+*	len = str_to_u32_array(buf, 0, val);
+*/
+	len = str_to_u32_array(buf, 0, val, 4);
 	drm_display_mode_to_videomode(&panel->info.mode, &vm);
 
 	switch (len) {
@@ -212,7 +222,7 @@ static ssize_t esd_check_enable_show(struct device *dev,
 {
 	struct sprd_panel *panel = dev_get_drvdata(dev);
 
-	return snprintf(buf, PAGE_SIZE, "%u\n", panel->info.esd_check_en);
+	return snprintf(buf, PAGE_SIZE, "%u\n", panel->info.esd_conf.esd_check_en);
 }
 
 static ssize_t esd_check_enable_store(struct device *dev,
@@ -229,12 +239,12 @@ static ssize_t esd_check_enable_store(struct device *dev,
 	}
 
 	if (enable) {
-		info->esd_check_en = true;
+		info->esd_conf.esd_check_en = true;
 		if (!pm_runtime_suspended(panel->slave->host->dev) &&
 		    !panel->esd_work_pending) {
 			pr_info("schedule esd work\n");
 			schedule_delayed_work(&panel->esd_work,
-			      msecs_to_jiffies(info->esd_check_period));
+			      msecs_to_jiffies(info->esd_conf.esd_check_period));
 			panel->esd_work_pending = true;
 		}
 	} else {
@@ -243,7 +253,7 @@ static ssize_t esd_check_enable_store(struct device *dev,
 			cancel_delayed_work_sync(&panel->esd_work);
 			panel->esd_work_pending = false;
 		}
-		info->esd_check_en = false;
+		info->esd_conf.esd_check_en = false;
 	}
 
 	return count;
@@ -257,7 +267,7 @@ static ssize_t esd_check_mode_show(struct device *dev,
 {
 	struct sprd_panel *panel = dev_get_drvdata(dev);
 
-	return snprintf(buf, PAGE_SIZE, "%u\n", panel->info.esd_check_mode);
+	return snprintf(buf, PAGE_SIZE, "%u\n", panel->info.esd_conf.esd_check_mode);
 }
 
 static ssize_t esd_check_mode_store(struct device *dev,
@@ -272,7 +282,7 @@ static ssize_t esd_check_mode_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	panel->info.esd_check_mode = mode;
+	panel->info.esd_conf.esd_check_mode = mode;
 
 	return count;
 
@@ -285,7 +295,7 @@ static ssize_t esd_check_period_show(struct device *dev,
 {
 	struct sprd_panel *panel = dev_get_drvdata(dev);
 
-	return snprintf(buf, PAGE_SIZE, "%u\n", panel->info.esd_check_period);
+	return snprintf(buf, PAGE_SIZE, "%u\n", panel->info.esd_conf.esd_check_period);
 }
 
 static ssize_t esd_check_period_store(struct device *dev,
@@ -300,20 +310,50 @@ static ssize_t esd_check_period_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	panel->info.esd_check_period = period;
+	panel->info.esd_conf.esd_check_period = period;
 
 	return count;
 
 }
 static DEVICE_ATTR_RW(esd_check_period);
 
+
+static ssize_t esd_trriger_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	extern void trriger_lcd_esd(void);
+	u32 period;
+
+	if (kstrtouint(buf, 10, &period)) {
+		pr_err("invalid input for esd check period\n");
+		return -EINVAL;
+	}
+
+	if(period){
+		trriger_lcd_esd();
+	}
+
+	return count;
+
+}
+static DEVICE_ATTR_WO(esd_trriger);
+
+
 static ssize_t esd_check_register_show(struct device *dev,
 			       struct device_attribute *attr,
 			       char *buf)
 {
 	struct sprd_panel *panel = dev_get_drvdata(dev);
+	int reg_len = panel->info.esd_conf.esd_check_reg_count;
+	int index, ret= 0;
 
-	return snprintf(buf, PAGE_SIZE, "0x%02x\n", panel->info.esd_check_reg);
+	for (index = 0; index < reg_len; index++) {
+		ret += snprintf(buf + ret, PAGE_SIZE, "esd reg%d: 0x%02x\n",
+				index + 1, panel->info.esd_conf.reg_seq[index]);
+	}
+
+	return ret;
 }
 
 static ssize_t esd_check_register_store(struct device *dev,
@@ -321,14 +361,24 @@ static ssize_t esd_check_register_store(struct device *dev,
 				const char *buf, size_t count)
 {
 	struct sprd_panel *panel = dev_get_drvdata(dev);
-	u32 reg;
+	int reg_len = panel->info.esd_conf.esd_check_reg_count;
+	uint8_t input_param[2];
+	int reg_index;
+	int len;
 
-	if (kstrtouint(buf, 16, &reg)) {
-		pr_err("invalid input for esd check register\n");
+	len = str_to_u8_array(buf, 16, input_param);
+	if (len != 2) {
+		pr_err("invalid input for esd check register, need 2 parameters\n");
 		return -EINVAL;
 	}
 
-	panel->info.esd_check_reg = reg;
+	reg_index = input_param[0] - 1;
+	if (reg_index > (reg_len - 1) || reg_index < 0) {
+		pr_err("invalid input for esd check register, index out of reg size\n");
+		return -EINVAL;
+	}
+
+	panel->info.esd_conf.reg_seq[reg_index] = input_param[1];
 
 	return count;
 
@@ -340,9 +390,19 @@ static ssize_t esd_check_value_show(struct device *dev,
 			       char *buf)
 {
 	struct sprd_panel *panel = dev_get_drvdata(dev);
+	int reg_len = panel->info.esd_conf.esd_check_reg_count;
+	int i, j, pre_reg_len, ret= 0;
 
-	return snprintf(buf, PAGE_SIZE, "0x%02x\n",
-			panel->info.esd_check_val);
+	pre_reg_len = 0;
+	for (i = 0; i < reg_len; i++) {
+		for (j = 0; j < panel->info.esd_conf.val_len_array[i]; j++) {
+			ret += snprintf(buf + ret, PAGE_SIZE, "esd reg%d: 0x%02x, val%d: 0x%02x\n",
+					i + 1, panel->info.esd_conf.reg_seq[i], j + 1,
+					panel->info.esd_conf.val_seq[j + pre_reg_len]);
+		}
+		pre_reg_len += panel->info.esd_conf.val_len_array[i];
+	}
+	return ret;
 }
 
 static ssize_t esd_check_value_store(struct device *dev,
@@ -350,14 +410,62 @@ static ssize_t esd_check_value_store(struct device *dev,
 				const char *buf, size_t count)
 {
 	struct sprd_panel *panel = dev_get_drvdata(dev);
-	u32 value;
+	int reg_len = panel->info.esd_conf.esd_check_reg_count;
+	uint8_t input_param[6];
+	uint8_t *tmp_val_seq;
+	int len, reg_index, i, j, k, current_index, val_size, new_total_val_count, pre_reg_len = 0;
 
-	if (kstrtouint(buf, 16, &value)) {
-		pr_err("invalid input for esd check value\n");
+	len = str_to_u8_array(buf, 16, input_param);
+	if (len < 3 || len > 6) {
+		pr_err("invalid input for esd check value, need 2 parameters\n");
 		return -EINVAL;
 	}
 
-	panel->info.esd_check_val = value;
+	reg_index = input_param[0] - 1;
+	if (reg_index > (reg_len - 1) || reg_index < 0) {
+		pr_err("invalid input for esd check register, index out of reg size\n");
+		return -EINVAL;
+	}
+
+	val_size = input_param[1];
+	if (val_size < 1 || val_size > 4) {
+		pr_err("invalid input for esd check value count, value count out of reg size\n");
+		return -EINVAL;
+	}
+
+	if (val_size != panel->info.esd_conf.val_len_array[reg_index]) {
+		new_total_val_count = (panel->info.esd_conf.total_esd_val_count + val_size -
+					panel->info.esd_conf.val_len_array[reg_index]);
+		tmp_val_seq = kzalloc(new_total_val_count, GFP_KERNEL);
+		for (i = 0; i < reg_index; i++)
+			pre_reg_len += panel->info.esd_conf.val_len_array[i];
+
+		for (i = 0; i < pre_reg_len; i++)
+			tmp_val_seq[i] = panel->info.esd_conf.val_seq[i];
+
+		for (j = 0; j < val_size; j++)
+			tmp_val_seq[i + j] = input_param[j + 2];
+
+		current_index = i + j;
+		for (k = 0; (k + current_index ) < new_total_val_count; k++)
+			tmp_val_seq[current_index + k] = panel->info.esd_conf.val_seq[i +
+						panel->info.esd_conf.val_len_array[reg_index] + k];
+
+		panel->info.esd_conf.val_len_array[reg_index] = val_size;
+		panel->info.esd_conf.total_esd_val_count = new_total_val_count;
+		kfree(panel->info.esd_conf.val_seq);
+		panel->info.esd_conf.val_seq = tmp_val_seq;
+	} else {
+		for (i = 0; i < reg_index; i++)
+			pre_reg_len = panel->info.esd_conf.val_len_array[i];
+
+		for (j = 0; j < val_size; j++) {
+			panel->info.esd_conf.val_seq[j + pre_reg_len] = input_param[j + 2];
+		}
+	}
+
+	for (i = 0; i < reg_index; i++)
+		pre_reg_len += panel->info.esd_conf.val_len_array[i];
 
 	return count;
 
@@ -512,6 +620,7 @@ static struct attribute *panel_attrs[] = {
 	&dev_attr_resume.attr,
 	&dev_attr_load_lcddtb.attr,
 	&dev_attr_panel_cabc_mode.attr,
+	&dev_attr_esd_trriger.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(panel);

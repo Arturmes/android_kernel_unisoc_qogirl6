@@ -8,6 +8,8 @@
 #include "lcd/lcd_icnl9911c_truly_mipi_hdp.dtsi"
 #include "lcd/lcd_gc7202_hlt_mipi_hdp.dtsi"
 #include "lcd/lcd_ili9882q_truly_mipi_hdp.dtsi"
+#include "lcd/lcd_ili9882q_huarui_mipi_hdp.dtsi"
+#include "lcd/lcd_gc7202h_hlt_mipi_hdp.dtsi"
 #include "lcd/lcd_nt35695_truly_mipi_fhd.dtsi"
 #include "lcd/lcd_nt35532_truly_mipi_fhd.dtsi"
 #include "lcd/lcd_nt35596_boe_mipi_fhd.dtsi"
@@ -226,7 +228,7 @@
 				key-volumeup {
 					label = "Volume Up Key";
 					linux,code = <KEY_VOLUMEUP>;
-					gpios = <&ap_gpio 125 GPIO_ACTIVE_LOW>;
+					gpios = <&eic_debounce 3 GPIO_ACTIVE_LOW>;
 					debounce-interval = <2>;
 					wakeup-source;
 				};
@@ -655,9 +657,9 @@
 		reg = <0x0 0x9e000000 0x0 0x007e9000>;
 	};
 
-	fd_reserved: faceid-mem@fefee000 {
-		reg = <0x0 0xfefee000 0x0 0x00500000>;
-	};
+	//fd_reserved: faceid-mem@fefee000 {
+	//	reg = <0x0 0xfefee000 0x0 0x00500000>;
+	//};
 
 	fb_reserved: framebuffer@ff4ee000 {
 		reg = <0x0 0xff4ee000 0x0 0x00a92000>;
@@ -672,12 +674,12 @@
 		memory-region = <&fb_reserved>;
 	};
 
-	heap@4 {
-		reg = <4>;
-		label = "carveout_fd";
-		type = <2>;
-		memory-region = <&fd_reserved>;
-	};
+	//heap@4 {
+	//	reg = <4>;
+	//	label = "carveout_fd";
+	//	type = <2>;
+	//	memory-region = <&fd_reserved>;
+	//};
 };
 
 &dpu {

@@ -4316,8 +4316,8 @@ CONFIG_EMBEDDED
 	[function] vts require, Embedded system.
 CONFIG_EMMC_SOFTWARE_CQ_SUPPORT
 	[arch] arm64
-	[plat] qogirl6,qogirn6pro,sharkl5Pro
-	[missing plat] sharkl3,sharkl5
+	[plat] qogirl6,qogirn6pro,sharkl5Pro,sharkl3
+	[missing plat] qogirl6,sharkl3,sharkl5
 	[field] make
 	[subsys] emmc
 	[must] user
@@ -8361,6 +8361,15 @@ CONFIG_LEDS_CLASS
 	[must] user
 	[missing plat description] none
 	[function] LED Class Support
+CONFIG_LEDS_SC27XX_VIBRA
+	[arch] all
+	[plat] all
+	[missing plat] none
+	[field] menu,make
+	[subsys] leds
+	[must] user
+	[missing plat description] none
+	[function] Spreadtrum sc27xx vibrator support
 CONFIG_LEDS_SC27XX_BLTC
 	[arch] all
 	[plat] all
@@ -14906,6 +14915,15 @@ CONFIG_SPRD_USBM
 	[missing plat description] Not used USBM in other projects
 	[function] Support for Unisoc USB management for usb audio offload feature
 CONFIG_SPRD_USBPINMUX
+	[arch] arm64
+	[plat] qogirl6
+	[missing plat] qogirn6pro,sharkl3,sharkl5,sharkl5Pro
+	[field] make
+	[subsys] debug
+	[must] debug
+	[missing plat description] This function is only used for qogirl6
+	[function] This function is used to enable qogirl6 platform usbpinmux driver.
+CONFIG_SPRD_USBPINMUX_QOGIRL6
 	[arch] arm64
 	[plat] qogirl6
 	[missing plat] qogirn6pro,sharkl3,sharkl5,sharkl5Pro

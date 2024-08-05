@@ -16,11 +16,7 @@ struct sec_log_buf {
 	char buf[];
 };
 
-#ifdef CONFIG_SEC_LOG_BUF_NO_CONSOLE
 /* called @ kernel/printk/printk.c */
 void sec_log_buf_write(const char *s, unsigned int count);
-#else
-static inline void sec_log_buf_write(const char *s, unsigned int count) {}
-#endif
 
 #endif /* __INDIRECT__SEC_LOG_BUF_H__ */

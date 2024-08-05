@@ -73,6 +73,10 @@ static u8 sipc_rx_data[MAX_RX_LEN];
 /* for debug flush event */
 static int flush_setcnt;
 static int flush_getcnt;
+
+u16 data_from_dynamic[4] = {0, 0, 0, 0};
+uint8_t proximity_dynamic_thread_flag = 0;
+
 /* sensor id */
 static struct hw_sensor_id_tag hw_sensor_id[_HW_SENSOR_TOTAL] = {
 	{0, 0xFF, 0xFF, ""},
@@ -2418,39 +2422,47 @@ void get_dynamic_data(struct shub_data *sensor)
 	int i;
 	u8 data[30], type, len;
 
+    //dev_err(&sensor->sensor_pdev->dev, "get_dynamic_data enter\n");
+
 	type = sensor->dynamic_data_get.type;
 	len = sensor->dynamic_data_get.length;
 	memcpy(data, sensor->dynamic_data_get.customer_data, len);
 	for (i = 0; i < len; i++)
-		dev_dbg(&sensor->sensor_pdev->dev,
-			"handle %d get dynamic data is %d\n", type, data[i]);
+		dev_err(&sensor->sensor_pdev->dev,
+			"handle %d get dynamic data  data[%d] = %d\n", type,  i, data[i]);
+
+    if(type == ORDER_PROX)//data from proximity dynamic code
+    {
+        //dev_err(&sensor->sensor_pdev->dev, "get_dynamic_data type is proximity\n");
+        memcpy(data_from_dynamic, data, sizeof(data_from_dynamic));
+        dev_err(&sensor->sensor_pdev->dev, "get_dynamic_data cali_ct = %d, cali_2cm = %d, psensor_high = %d, psensor_low = %d\n",
+                                                            data_from_dynamic[0], data_from_dynamic[1], data_from_dynamic[2], data_from_dynamic[3]);
+    }
 }
 
 static ssize_t data_to_dynamic_store(struct device *dev,
 				     struct device_attribute *attr,
 				     const char *buf, size_t count)
 {
-	int err, len;
-	ssize_t num;
-	uint8_t data[CALIBRATION_DATA_LENGTH];
+	int err = 0;
+	uint8_t data_to_dynamic = 0;
 	struct shub_data *sensor = dev_get_drvdata(dev);
+    dev_err(&sensor->sensor_pdev->dev, "data_to_dynamic_stores enter\n");
 
-	num = count;
-	if (count <= CALIBRATION_DATA_LENGTH) {
-		len = count;
-	} else {
-		len = CALIBRATION_DATA_LENGTH;
-		dev_err(&sensor->sensor_pdev->dev, "buf length is beyond 30 bytes\n");
-	}
-	memcpy(data, buf, len);
-	err = shub_send_command(sensor, HANDLE_MAX,
-				AP_SEND_DATA_TO_DYNAMIC_SUBTYPE,
-				(char *)data, len);
+	if (sscanf(buf, "%d\n", &data_to_dynamic) != 1)
+		return -EINVAL;
+
+	err = shub_send_command(sensor, ORDER_LIGHT, AP_SEND_DATA_TO_DYNAMIC_SUBTYPE, &data_to_dynamic, sizeof(data_to_dynamic));
 	if (err < 0) {
 		dev_err(&sensor->sensor_pdev->dev, "Send dynamic para_data fail\n");
 	}
+	dev_err(&sensor->sensor_pdev->dev, "data_to_dynamic Send dynamic para_data:%d\n", data_to_dynamic);
+    //0:close ps dynamic thread;1:open ps dynamic thread.
+    if((data_to_dynamic == 1) || (data_to_dynamic == 0)){
+        proximity_dynamic_thread_flag = data_to_dynamic;
+    }
 
-	return num;
+	return count;
 }
 static DEVICE_ATTR_WO(data_to_dynamic);
 
@@ -2582,8 +2594,11 @@ static ssize_t raw_data_ps1_show(struct device *dev,
     data_out[1]=(int)ptr[1];
 
     len += sprintf(buf, ": state : %d\n",data_out[0]);
-    len += sprintf((buf + len), ": ps_current_thd_h : %d\n",data_out[1] >> 16);
-    len += sprintf((buf + len), ": ps_current_thd_l  : %d\n",data_out[1] & 0xFFFF);
+    //len += sprintf((buf + len), ": ps_current_thd_h : %d\n",data_out[1] >> 16);
+    //len += sprintf((buf + len), ": ps_current_thd_l  : %d\n",data_out[1] & 0xFFFF);
+    len += sprintf((buf + len), ": ps_current_thd_h : %d\n", data_from_dynamic[2]);
+    len += sprintf((buf + len), ": ps_current_thd_l  : %d\n",data_from_dynamic[3]);
+    len += sprintf((buf + len), ": ps_dynamic_flag  : %d\n",proximity_dynamic_thread_flag);
 
     return len;
 }
@@ -3019,6 +3034,9 @@ static ssize_t ps_cali_data_show(struct device *dev,
 	if (IS_ERR(pfile)) {
 		err = PTR_ERR(pfile);
 		pr_err("open file Psensor cali fail ret=%d,Use default calibration data!\n", err);
+		pr_err("ps_cali_data_show 1 [ct:%d, 2cm:%d, 6cm:%d]\n", data_from_dynamic[0], data_from_dynamic[1], 0);
+		len = sprintf(buf, "Cali Data[ct:%d, 2cm:%d, 6cm:%d]\n", data_from_dynamic[0], data_from_dynamic[1], 0);
+		return len;
 	} else {
 		err = kernel_read(pfile, raw_cali_data,
 			          CALIBRATION_DATA_LENGTH,
@@ -3033,7 +3051,7 @@ static ssize_t ps_cali_data_show(struct device *dev,
 
 		filp_close(pfile, NULL);		
 	}
-    pr_err("ps_cali_data_show [ct:%d, 2cm:%d, 6cm:%d]\n", cali_ct, cali_2cm, cali_6cm);
+    pr_err("ps_cali_data_show 2[ct:%d, 2cm:%d, 6cm:%d]\n", cali_ct, cali_2cm, cali_6cm);
 
 	len += sprintf(buf, "Cali Data[ct:%d, 2cm:%d, 6cm:%d]\n", cali_ct, cali_2cm, cali_6cm);
 

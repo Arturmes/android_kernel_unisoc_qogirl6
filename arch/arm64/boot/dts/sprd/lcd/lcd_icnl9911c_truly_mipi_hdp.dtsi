@@ -18,8 +18,6 @@
 						sprd,esd-check-enable = <1>;    /* 1:enable		0:disable */
 						sprd,esd-check-mode = <1>;      /* 1:te type	0:register type --- default */
 						sprd,esd-check-period = <2000>;
-						sprd,esd-check-register = <0x0A>;
-						sprd,esd-check-value = <0x9C>;
 
 						sprd,reset-on-sequence = <0 5>, <1 5>, <0 5>, <1 30>;
 						sprd,reset-off-sequence = <0 5>;
@@ -45,7 +43,7 @@
 							29 00 00 0B BE 72 72 50 32 0C 77 43 07 0E 0E
 							29 00 00 09 BF 07 25 07 25 7F 00 11 04
 							29 00 00 0A C0 10 FF FF FF FF FF 00 FF 00
-							29 00 00 14 C1 C0 20 20 7C 04 58 5C 04 2A 40 36 00 07 CF FF FF 98 01 C0
+							29 00 00 14 C1 C0 20 20 7C 04 58 5C 04 2A 40 36 00 07 C0 10 FF 98 01 C0
 							29 00 00 0A C2 CC 01 10 00 01 30 02 21 43
 							29 00 00 0B C3 06 00 FF 00 FF 00 00 81 01 00
 							29 00 00 0B C4 84 01 2B 41 00 3C 00 03 03 2E
@@ -55,13 +53,14 @@
 							29 00 00 06 D0 80 0D FF 0F 63
 							29 00 00 02 D2 42
 							29 00 00 04 FA 45 93 01
-							29 00 00 18 E1 EF FE FE FE FE EE F0 20 33 FF 00 00 6A 90 C0 0D 6A F0 3E FF 00 06 39
-							29 00 00 1B E0 30 00 80 88 11 3F 22 62 DF A0 04 CC 01 FF F6 FF F0 FD FF FD F8 F5 FC FC FD FF
+							39 00 00 18 E1 DF FF EF FE FF FF F0 AE 35 35 35 51 35 35 F4 35 32 5B 84 AE 00 0B E4//PWM=20K
+							39 00 00 1B E0 30 01 A0 98 01 1F 22 62 DF A0 04 CC 01 FF F8 F8 FA FD F9 F8 F8 F8 FC FC F0 FF
+							39 00 00 03 EA 46 50
 							29 00 00 03 F0 A5 A6
 							29 00 00 03 F1 5A 59
 							39 00 00 03 51 00 00
 							15 00 00 02 53 2C
-							15 00 00 02 55 00
+							15 00 00 02 55 01
 							15 00 00 02 35 00
 							05 64 00 01 11
 							05 14 00 01 29
@@ -84,7 +83,7 @@
 							39 00 00 03 F0 5A 59
 							39 00 00 03 F1 A5 A6
 							39 00 00 1B E0 30 01 A0 98 01 1F 22 62 DF A0 04 CC 01 FF F8 F8 FA FD F9 F8 F8 F8 FC FC F0 FF
-							39 00 00 18 E1 DF FF EF FE FF FF F0 AE 35 35 35 51 35 35 F4 35 32 5B 84 AE 00 06 39//PWM=20K
+							39 00 00 18 E1 DF FF EF FE FF FF F0 AE 35 35 35 51 35 35 F4 35 32 5B 84 AE 00 0B E4//PWM=20K
 							39 00 00 03 EA 46 50
 							39 00 00 03 F1 5A 59
 							39 00 00 03 F0 A5 A6
@@ -95,7 +94,7 @@
 							39 00 00 03 F0 5A 59
 							39 00 00 03 F1 A5 A6
 							39 00 00 1B E0 30 01 A0 98 01 1F 22 62 DF A0 04 CC 01 FF FC FC F0 FD FF FC F8 FC F2 FC F0 FF
-							39 00 00 18 E1 CC CC CC CC CD DE E0 CC D0 D0 D0 D0 D0 D0 D0 D0 73 EE 6D EE 00 06 39//PWM=20K
+							39 00 00 18 E1 CC CC CC CC CD DE E0 CC D0 D0 D0 D0 D0 D0 D0 D0 73 EE 6D EE 00 0B E4//PWM=20K
 							39 00 00 03 EA 46 50
 							39 00 00 03 F1 5A 59
 							39 00 00 03 F0 A5 A6

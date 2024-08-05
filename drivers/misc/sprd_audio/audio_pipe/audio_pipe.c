@@ -283,13 +283,18 @@ static long apipe_ioctl(struct file *filp,
 		kfifo = (struct kfifo_rec_ptr_2 *) &apipe_dev->kf;
 		if (get_user(buffer_size, (u32 __user *)argp))
 			return -EFAULT;
+		mutex_lock(&apipe_dev->mutex);
 		buffer_size = roundup_pow_of_two(buffer_size);
 		if (buffer_size > 0 && buffer_size < GET_USER_BUFFER_SIZE_MAX)
 			data = vmalloc(buffer_size);
-		else
+		else {
+			mutex_unlock(&apipe_dev->mutex);
 			return -ENOMEM;
-		if (!data)
+		}
+		if (!data) {
+			mutex_unlock(&apipe_dev->mutex);
 			return -ENOMEM;
+		}
 
 		if (apipe_dev->data)
 			vfree(apipe_dev->data);
@@ -299,9 +304,11 @@ static long apipe_ioctl(struct file *filp,
 			vfree(apipe_dev->data);
 			apipe_dev->data = NULL;
 			dev_err(apipe_dev->dev, "apipe_open failed: %d\n", ret);
+			mutex_unlock(&apipe_dev->mutex);
 			return ret;
 		}
 		apipe_dev->buffer_size = buffer_size;
+		mutex_unlock(&apipe_dev->mutex);
 		break;
 	case AUDIO_PIPE_BUFFERSIZE_GET:
 		if (put_user(apipe_dev->buffer_size, (u32 __user *)argp))

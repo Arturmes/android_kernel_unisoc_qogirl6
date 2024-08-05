@@ -19,6 +19,7 @@
 #include "sprd_bl.h"
 #include "sprd_dpu.h"
 #include "sprd_dvfs_dpu.h"
+#include "disp_trusty.h"
 #include "dpu_r6p0_corner_param.h"
 #include "dpu_enhance_param.h"
 #include "dpu_r6p0_scale_param.h"
@@ -526,6 +527,10 @@ static struct backlight_device *bl_dev;
 static int wb_en;
 static int max_vsync_count;
 static int vsync_count;
+static int secure_debug;
+static int time = 5000;
+module_param(time, int, 0644);
+module_param(secure_debug, int, 0644);
 static struct sprd_dpu_layer wb_layer;
 static int wb_xfbc_en;
 static int corner_radius;
@@ -1382,6 +1387,7 @@ static int dpu_config_dsc_param(struct dpu_context *ctx)
 static int dpu_init(struct dpu_context *ctx)
 {
 	struct dpu_reg *reg = (struct dpu_reg *)ctx->base;
+	static bool tos_msg_alloc = false;
 	u32 size;
 	int ret;
 	struct sprd_dpu *dpu =
@@ -1437,6 +1443,15 @@ static int dpu_init(struct dpu_context *ctx)
 	INIT_WORK(&ctx->cabc_bl_update, dpu_cabc_bl_update_func);
 
 	frame_no = 0;
+
+	/* Allocate memory for trusty */
+	if(!tos_msg_alloc){
+		ctx->tos_msg = kmalloc(sizeof(struct disp_message) +
+			sizeof(struct layer_reg), GFP_KERNEL);
+		if(!ctx->tos_msg)
+			return -ENOMEM;
+		tos_msg_alloc = true;
+	}
 
 	return 0;
 }
@@ -1689,6 +1704,7 @@ static void dpu_layer(struct dpu_context *ctx,
 {
 	struct dpu_reg *reg = (struct dpu_reg *)ctx->base;
 	struct layer_reg *layer;
+	struct layer_reg tmp = {};
 	u32 dst_size, src_size, offset, wd, rot;
 	int i;
 
@@ -1699,64 +1715,103 @@ static void dpu_layer(struct dpu_context *ctx,
 	layer->ctrl = 0;
 
 	if (hwlayer->pallete_en) {
-		layer->pos = offset;
-		layer->src_size = src_size;
-		layer->dst_size = dst_size;
-		layer->alpha = hwlayer->alpha;
-		layer->pallete = hwlayer->pallete_color;
+		tmp.pos = offset;
+		tmp.src_size = src_size;
+		tmp.dst_size = dst_size;
+		tmp.alpha = hwlayer->alpha;
+		tmp.pallete = hwlayer->pallete_color;
 
 		/* pallete layer enable */
-		layer->ctrl = 0x2005;
-		reg->layer_enable |= (1 << hwlayer->index);
+		tmp.ctrl = 0x2005;
+		//reg->layer_enable |= (1 << hwlayer->index);
 		pr_debug("dst_x = %d, dst_y = %d, dst_w = %d, dst_h = %d, pallete:%d\n",
-			hwlayer->dst_x, hwlayer->dst_y,
-			hwlayer->dst_w, hwlayer->dst_h, layer->pallete);
-		return;
-	}
+				hwlayer->dst_x, hwlayer->dst_y,
+				hwlayer->dst_w, hwlayer->dst_h, tmp.pallete);
+	} else {
+		if (src_size != dst_size) {
+			rot = to_dpu_rotation(hwlayer->rotation);
+			if ((rot == DPU_LAYER_ROTATION_90) || (rot == DPU_LAYER_ROTATION_270) ||
+					(rot == DPU_LAYER_ROTATION_90_M) || (rot == DPU_LAYER_ROTATION_270_M))
+				dst_size = (hwlayer->dst_h & 0xffff) | ((hwlayer->dst_w) << 16);
+			tmp.ctrl = BIT(24);
+		}
 
-	if (src_size != dst_size) {
-		rot = to_dpu_rotation(hwlayer->rotation);
-		if ((rot == DPU_LAYER_ROTATION_90) || (rot == DPU_LAYER_ROTATION_270) ||
-		  (rot == DPU_LAYER_ROTATION_90_M) || (rot == DPU_LAYER_ROTATION_270_M))
-			dst_size = (hwlayer->dst_h & 0xffff) | ((hwlayer->dst_w) << 16);
-		layer->ctrl = BIT(24);
-	}
+		for (i = 0; i < hwlayer->planes; i++) {
+			if (hwlayer->addr[i] % 16)
+				pr_err("layer addr[%d] is not 16 bytes align, it's 0x%08x\n",
+						i, hwlayer->addr[i]);
+			tmp.addr[i] = hwlayer->addr[i];
+		}
 
-	for (i = 0; i < hwlayer->planes; i++) {
-		if (hwlayer->addr[i] % 16)
-			pr_err("layer addr[%d] is not 16 bytes align, it's 0x%08x\n",
-				i, hwlayer->addr[i]);
-		layer->addr[i] = hwlayer->addr[i];
-	}
+		tmp.pos = offset;
+		tmp.src_size = src_size;
+		tmp.dst_size = dst_size;
+		tmp.crop_start = (hwlayer->src_y << 16) | hwlayer->src_x;
+		tmp.alpha = hwlayer->alpha;
 
-	layer->pos = offset;
-	layer->src_size = src_size;
-	layer->dst_size = dst_size;
-	layer->crop_start = (hwlayer->src_y << 16) | hwlayer->src_x;
-	layer->alpha = hwlayer->alpha;
+		wd = drm_format_plane_cpp(hwlayer->format, 0);
+		if (wd == 0) {
+			pr_err("layer[%d] bytes per pixel is invalid\n", hwlayer->index);
+			return;
+		}
 
-	wd = drm_format_plane_cpp(hwlayer->format, 0);
-	if (wd == 0) {
-		pr_err("layer[%d] bytes per pixel is invalid\n", hwlayer->index);
-		return;
-	}
-
-	if (hwlayer->planes == 3)
-		/* UV pitch is 1/2 of Y pitch*/
-		layer->pitch = (hwlayer->pitch[0] / wd) |
+		if (hwlayer->planes == 3)
+			/* UV pitch is 1/2 of Y pitch*/
+			tmp.pitch = (hwlayer->pitch[0] / wd) |
 				(hwlayer->pitch[0] / wd << 15);
-	else
-		layer->pitch = hwlayer->pitch[0] / wd;
+		else
+			tmp.pitch = hwlayer->pitch[0] / wd;
 
-	layer->ctrl |= dpu_img_ctrl(hwlayer->format, hwlayer->blending,
-		hwlayer->xfbc, hwlayer->y2r_coef, hwlayer->rotation);
+		tmp.ctrl |= dpu_img_ctrl(hwlayer->format, hwlayer->blending,
+				hwlayer->xfbc, hwlayer->y2r_coef, hwlayer->rotation);
+	}
+
+	if (hwlayer->secure_en || secure_debug) {
+		if (!reg->dpu_secure) {
+			disp_ca_connect();
+			udelay(time);
+		}
+		ctx->tos_msg->cmd = TA_FIREWALL_SET;
+		ctx->tos_msg->version = DPU_R6P0;
+		disp_ca_write(ctx->tos_msg, sizeof(*ctx->tos_msg));
+		disp_ca_wait_response();
+
+		memcpy(ctx->tos_msg + 1, &tmp, sizeof(tmp));
+
+		ctx->tos_msg->cmd = TA_REG_SET;
+		ctx->tos_msg->version = DPU_R6P0;
+		disp_ca_write(ctx->tos_msg, sizeof(*ctx->tos_msg) + sizeof(tmp));
+		disp_ca_wait_response();
+
+		return;
+	} else if (reg->dpu_secure) {
+		ctx->tos_msg->cmd = TA_REG_CLR;
+		ctx->tos_msg->version = DPU_R6P0;
+		disp_ca_write(ctx->tos_msg, sizeof(*ctx->tos_msg));
+		disp_ca_wait_response();
+
+		ctx->tos_msg->cmd = TA_FIREWALL_CLR;
+		disp_ca_write(ctx->tos_msg, sizeof(*ctx->tos_msg));
+		disp_ca_wait_response();
+	}
+
+	layer = &reg->layers[hwlayer->index];
+	for (i = 0; i < 4; i++)
+		layer->addr[i] = tmp.addr[i];
+	layer->pos = tmp.pos;
+	layer->src_size = tmp.src_size;
+	layer->dst_size = tmp.dst_size;
+	layer->crop_start = tmp.crop_start;
+	layer->alpha = tmp.alpha;
+	layer->pitch = tmp.pitch;
+	layer->ctrl = tmp.ctrl;
 
 	pr_debug("dst_x = %d, dst_y = %d, dst_w = %d, dst_h = %d\n",
-				hwlayer->dst_x, hwlayer->dst_y,
-				hwlayer->dst_w, hwlayer->dst_h);
+			hwlayer->dst_x, hwlayer->dst_y,
+			hwlayer->dst_w, hwlayer->dst_h);
 	pr_debug("start_x = %d, start_y = %d, start_w = %d, start_h = %d\n",
-				hwlayer->src_x, hwlayer->src_y,
-				hwlayer->src_w, hwlayer->src_h);
+			hwlayer->src_x, hwlayer->src_y,
+			hwlayer->src_w, hwlayer->src_h);
 
 	reg->layer_enable |= (1 << hwlayer->index);
 }

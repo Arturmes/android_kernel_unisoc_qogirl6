@@ -207,7 +207,7 @@ static ssize_t gen_write_show(struct device *dev,
 	int ret = 0;
 
 	for (i = 0; i < input_len; i++)
-		ret += snprintf(buf + ret, PAGE_SIZE,
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
 				"param[%d] = 0x%02x\n",
 				i, input_param[i]);
 
@@ -243,6 +243,15 @@ static ssize_t dcs_read_store(struct device *dev,
 	if (len == 1)
 		input_param[1] = 1;
 
+/*
+* Modify for Bug 1727685 - SI-23336.
+* Jira:KSG_M168_A01-2995
+*/
+	if (input_param[1] > 60) {
+		pr_err("read size over the max size limit\n");
+		return -EINVAL;
+	}
+
 	mipi_dsi_set_maximum_return_packet_size(dsi->slave, input_param[1]);
 	mipi_dsi_dcs_read(dsi->slave, input_param[0],
 			  read_buf, input_param[1]);
@@ -256,6 +265,15 @@ static ssize_t dcs_read_show(struct device *dev,
 {
 	int i;
 	int ret = 0;
+
+/*
+* Modify for Bug 1727685 - SI-23336.
+* Jira:KSG_M168_A01-2995
+*/
+	if (input_param[1] > 60) {
+		pr_err("read size over the max size limit\n");
+		return -EINVAL;
+	}
 
 	for (i = 0; i < input_param[1]; i++)
 		ret += snprintf(buf + ret, PAGE_SIZE,
@@ -305,7 +323,7 @@ static ssize_t dcs_write_show(struct device *dev,
 	int ret = 0;
 
 	for (i = 0; i < input_len; i++)
-		ret += snprintf(buf + ret, PAGE_SIZE,
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
 				"param[%d] = 0x%02x\n",
 				i, input_param[i]);
 

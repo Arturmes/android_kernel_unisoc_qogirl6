@@ -26,6 +26,9 @@ Required dai-link subnodes:
 Required CPU/CODEC subnodes properties:
 -sound-dai		: phandle/s and port of CPU/CODEC
 
+Optional properties:
+- multi-codecs: support multi codecs
+
 Example:
 sound_vbc_v4_sprd_codec: sound@0 {
 	compatible = "sprd,vbc-v4-codec-sc2730";

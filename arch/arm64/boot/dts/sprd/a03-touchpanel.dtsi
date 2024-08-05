@@ -22,12 +22,12 @@
 
 		gts,test-open;
 		gts,open-cb = <200>;
-		gts,open-min = <500>;
+		gts,open-min = <1000>;
 		
 
 		gts,test-short;
 		gts,short-cb = <10>;
-		gts,short-min = <200>;
+		gts,short-min = <100>;
 
 		/*icnl9911c ===========start===========*/
 		touch,max-touch-number = <5>;
@@ -61,7 +61,7 @@
 		/* Charger detect */
 		cts,touch-charger-detect-enable;
 		cts,touch-charger-detect-type = "notify"; /* notify, poll */
-		cts,touch-charger-detect-psy-name = "battery";
+		cts,touch-charger-detect-psy-name = "bq2560x_charger";
 		cts,touch-charger-detect-psp = "POWER_SUPPLY_PROP_ONLINE";
 		cts,touch-charger-detect-psp-poll-interval = <1000>;
 
@@ -81,7 +81,7 @@
 		/* Charger detect */
 		nvt,touch-charger-detect-enable;
 		nvt,touch-charger-detect-type = "notify"; /* notify, poll */
-		nvt,touch-charger-detect-psy-name = "battery";
+		nvt,touch-charger-detect-psy-name = "bq2560x_charger";
 		nvt,touch-charger-detect-psp = "POWER_SUPPLY_PROP_ONLINE";
 		nvt,touch-charger-detect-psp-poll-interval = <1000>;
 		/* MP */

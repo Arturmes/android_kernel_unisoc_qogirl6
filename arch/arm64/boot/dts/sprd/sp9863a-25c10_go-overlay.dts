@@ -85,10 +85,10 @@
 				compatible = "simple-battery";
 				charge-full-design-microamp-hours = <4951000>;
 				charge-term-current-microamp = <60000>;
-				constant_charge_current_max_microamp = <1550000>;
+				constant_charge_current_max_microamp = <1560000>;
 				constant_charge_voltage_max_microvolt = <4400000>;
 				factory-internal-resistance-micro-ohms = <134000>;
-				voltage-min-design-microvolt = <3450000>;
+				voltage-min-design-microvolt = <3455000>;
 				ocv-capacity-celsius = <20>;
 				ocv-capacity-table-0 = <4371000 100>, <4306000 95>, <4247000 90>,
 							<4190000 85>, <4135000 80>, <4082000 75>,
@@ -104,10 +104,10 @@
 							  <204000 1400>, <175000 1450>, <150000 1500>,
 							  <129000 1550>, <111000 1600>, <96000 1650>,
 							  <83000  1700>, <72000  1750>, <63000  1800>;
-				capacity-temp-table = <50 100>, <25 100>, <10 99>, <0 93>, <(-10) 84>, <(-20) 71>;
-				resistance-temp-table = <50 107>, <25 134>, <10 238>, <0 1084>, <(-10) 1210>, <(-20) 1343>;
+				capacity-temp-table = <50 100>, <25 100>, <10 100>, <0 96>, <(-10) 92>, <(-20) 78>;
+				resistance-temp-table = <50 100>, <25 100>, <10 177>, <0 809>, <(-10) 903>, <(-20) 1002>;
 				charge-sdp-current-microamp = <500000 500000>;
-				charge-dcp-current-microamp = <1550000 1600000>;
+				charge-dcp-current-microamp = <1560000 1600000>;
 				charge-cdp-current-microamp = <1300000 1300000>;
 				charge-unknown-current-microamp = <500000 500000>;
 			};
@@ -123,7 +123,8 @@
 				cm-fullbatt-vchkdrop-ms = <30000>;
 				cm-fullbatt-vchkdrop-volt = <100000>;
 				cm-fullbatt-voltage = <4378000>;
-				cm-fullbatt-current = <120000>;
+				cm-fullbatt-current = <240000>;
+				cm-first-fullbatt-current = <360000>;
 				cm-fullbatt-capacity = <100>;
 
 				cm-num-chargers = <1>;
@@ -157,13 +158,13 @@
 				cm-charge-voltage-max = <6500000>;
 				/* drop voltage in microVolts to restart charging */
 				cm-charge-voltage-drop = <700000>;
-				cm-dcp-jeita-temp-table = <1000 1020 0 4400000>, <1120 1140 700000 4400000>,
-					<1450 1430 1550000 4400000>, <1550 1530 1500000 4200000>;
-				cm-sdp-jeita-temp-table = <1000 1020 0 4400000>, <1120 1140 500000 4400000>,
+				cm-dcp-jeita-temp-table = <1000 1020 0 4400000>, <1050 1060 500000 4400000>, <1120 1140 1400000 4400000>,
+					<1450 1430 1560000 4400000>, <1550 1530 1560000 4200000>;
+				cm-sdp-jeita-temp-table = <1000 1020 0 4400000>, <1050 1060 500000 4400000>, <1120 1140 500000 4400000>,
 					<1450 1430 500000 4400000>, <1550 1530 500000 4200000>;
-				cm-cdp-jeita-temp-table = <1000 1020 0 4400000>, <1120 1140 700000 4400000>,
+				cm-cdp-jeita-temp-table = <1000 1020 0 4400000>, <1050 1060 500000 4400000>, <1120 1140 1400000 4400000>,
 					<1450 1430 1500000 4400000>, <1550 1530 1500000 4200000>;
-				cm-unknown-jeita-temp-table = <1000 1020 0 4400000>, <1120 1140 500000 4400000>,
+				cm-unknown-jeita-temp-table = <1000 1020 0 4400000>, <1050 1060 500000 4400000>, <1120 1140 500000 4400000>,
 					<1450 1430 500000 4400000>, <1550 1530 500000 4200000>;
 
 				monitored-battery = <&bat>;
@@ -185,7 +186,7 @@
 				key-volumedown {
 					label = "Volume Down Key";
 					linux,code = <KEY_VOLUMEDOWN>;
-					gpios = <&ap_gpio 124 GPIO_ACTIVE_LOW>;
+					gpios = <&pmic_eic 10 GPIO_ACTIVE_HIGH>;
 					debounce-interval = <2>;
 					wakeup-source;
 				};
@@ -193,7 +194,7 @@
 				key-volumeup {
 					label = "Volume Up Key";
 					linux,code = <KEY_VOLUMEUP>;
-					gpios = <&pmic_eic 10 GPIO_ACTIVE_HIGH>;
+					gpios = <&ap_gpio 124 GPIO_ACTIVE_LOW>;
 					debounce-interval = <2>;
 					wakeup-source;
 				};
@@ -217,6 +218,10 @@
 	};
 };
 
+&extcon_gpio {
+	id-gpio = <&eic_debounce 4 GPIO_ACTIVE_HIGH>;
+};
+
 &chosen {
 	bootargs_ext = "androidboot.hardware=s9863a25c10_go androidboot.dtbo_idx=0";
 };
@@ -226,7 +231,7 @@
 };
 
 &usb {
-	extcon = <&extcon_gpio>, <&pmic_typec>;
+	extcon = <&extcon_gpio>;
 	vbus-supply = <&vddvbus>;
 };
 
@@ -470,13 +475,13 @@
 
 &pmic_fgu {
 	monitored-battery = <&bat>;
-	sprd,calib-resistance-real = <20000>;
+	sprd,calib-resistance-real = <19000>;
 	sprd,calib-resistance-spec = <20000>;
-	first-calib-voltage = <3554800>;
+	first-calib-voltage = <3565600>;
 	first-calib-capacity = <50>;
 	fgu-capacity-track;
 	fullbatt-track-end-vol = <4295>;
-	fullbatt-track-end-cur = <125>;
+	fullbatt-track-end-cur = <130>;
 	phys = <&hsphy>;
 };
 
@@ -489,7 +494,7 @@
 &ddr_dfs {
 	sprd-scene = "boost", "lcdon", "lcdoff", "camlow",
 			"camhigh", "camveryhigh";
-	sprd-freq = <933 400 233 400 622 933>;
+	sprd-freq = <933 400 233 622 622 933>;
 };
 
 &sprd_hwdvfs {
@@ -647,7 +652,7 @@
 };
 
 &sdio0 {
-	cd-gpios = <&eic_async 9 1>;
+	cd-gpios = <&eic_async 9 GPIO_ACTIVE_HIGH>;
 };
 
 &thm_zone {

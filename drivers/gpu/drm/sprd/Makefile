@@ -13,8 +13,8 @@ obj-y := sprd_drm.o \
 	sprd_dp.o \
 	lcd_bias_i2c.o
 
-# obj-y += dummy/dummy_crtc.o
-# obj-y += dummy/dummy_connector.o
+obj-y += dummy/dummy_crtc.o
+obj-y += dummy/dummy_connector.o
 
 obj-y += disp_lib.o sprd_corner.o disp_trusty.o
 

@@ -1243,8 +1243,19 @@ static int get_ether_addr(const char *str, u8 *dev_addr)
 		for (i = 0; i < 6; i++) {
 			unsigned char num;
 
+/**SI-23405 Heap buffer overflow in rndis_opts_dev_addr_store() due to not checking size.
+ *Other affected functions: rndis_opts_host_addr_store. add by wangyibo at 20211001.
+ * */
+			if (!*str)
+				goto error;
+
 			if ((*str == '.') || (*str == ':'))
 				str++;
+
+/**SI-23405*/
+			if (!str[0] || !str[1])
+				goto error;
+
 			num = hex_to_bin(*str++) << 4;
 			num |= hex_to_bin(*str++);
 			dev_addr [i] = num;
@@ -1252,6 +1263,9 @@ static int get_ether_addr(const char *str, u8 *dev_addr)
 		if (is_valid_ether_addr(dev_addr))
 			return 0;
 	}
+
+/**SI-23405*/
+error:
 	eth_random_addr(dev_addr);
 	return 1;
 }

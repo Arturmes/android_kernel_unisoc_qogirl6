@@ -42,6 +42,7 @@ obj-y			:= filemap.o mempool.o oom_kill.o \
 			   compaction.o vmacache.o swap_slots.o \
 			   interval_tree.o list_lru.o workingset.o \
 			   debug.o $(mmu-y) vmpressure.o
+obj-y += sec_mm/
 
 GCOV_PROFILE_compaction.o := $(CONFIG_SPRD_MEM_GCOV)
 GCOV_PROFILE_vmpressure.o := $(CONFIG_SPRD_MEM_GCOV)

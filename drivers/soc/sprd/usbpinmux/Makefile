@@ -1,2 +1,2 @@
-obj-$(CONFIG_SPRD_USBPINMUX) += sprd_usbpinmux.o
+obj-$(CONFIG_SPRD_USBPINMUX_QOGIRL6) += sprd_usbpinmux_qogirl6.o
 

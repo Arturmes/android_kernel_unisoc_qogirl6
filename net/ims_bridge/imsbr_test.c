@@ -644,93 +644,110 @@ static void imsbr_test_tuple_dump(unsigned long unused)
 
 static void imsbr_test_cptuple_update(unsigned long unused)
 {
-    struct imsbr_msghdr msg = { };
-    struct call_c_function ccf = { };
+	struct imsbr_msghdr *msg = (struct imsbr_msghdr *)kzalloc(sizeof(struct imsbr_msghdr) + IMSBR_CTRL_BLKSZ * sizeof(char), GFP_KERNEL);
+	struct call_c_function ccf = { };
 
-    g_test_result = IMSBR_TEST_INPROGRESS;
-    call_core_function(&ccf);
+	g_test_result = IMSBR_TEST_INPROGRESS;
+	call_core_function(&ccf);
 
-    msg.imsbr_payload[6] = IMSBR_MEDIA_SIP;
-    msg.imsbr_payload[7] = IMSBR_LINK_CP;
-    msg.imsbr_payload[8] = IMSBR_SOCKET_CP;
+	msg->imsbr_payload[40] = IMSBR_MEDIA_SIP;
+	msg->imsbr_payload[41] = 0;
+	msg->imsbr_payload[42] = IMSBR_LINK_CP;
+	msg->imsbr_payload[43] = 0;
+	msg->imsbr_payload[44] = IMSBR_SOCKET_CP;
 
-    strcpy(msg.imsbr_cmd, "cptuple-add");
-    ccf.cptuple_update(&msg, 1);
+	strcpy(msg->imsbr_cmd, "cptuple-add");
+	ccf.cptuple_update(msg, 1);
 
-    strcpy(msg.imsbr_cmd, "cptuple-del");
-    ccf.cptuple_update(&msg, 0);
+	strcpy(msg->imsbr_cmd, "cptuple-del");
+	ccf.cptuple_update(msg, 0);
 
-    g_test_result = IMSBR_TEST_PASS;
+	kfree(msg);
+
+	g_test_result = IMSBR_TEST_PASS;
 }
 
 static void imsbr_test_handover_state(unsigned long unused)
 {
-    struct imsbr_msghdr msg = {};
-    struct call_c_function ccf = { };
+	struct imsbr_msghdr *msg = (struct imsbr_msghdr *)kzalloc(sizeof(struct imsbr_msghdr) + IMSBR_CTRL_BLKSZ * sizeof(char), GFP_KERNEL);
+	struct call_c_function ccf = { };
 
-    g_test_result = IMSBR_TEST_INPROGRESS;
-    call_core_function(&ccf);
+	g_test_result = IMSBR_TEST_INPROGRESS;
+	call_core_function(&ccf);
 
-    msg.imsbr_payload[0] = IMSBR_HO_LTE2WIFI;
-    msg.imsbr_payload[1] = 1;
+	msg->imsbr_payload[0] = 0;
+	msg->imsbr_payload[1] = 0;
+	msg->imsbr_payload[2] = 0;
+	msg->imsbr_payload[3] = IMSBR_HO_LTE2WIFI;
+	msg->imsbr_payload[4] = 1;
+	ccf.handover_state(msg, 0);
 
-    ccf.handover_state(&msg, 0);
-    g_test_result = IMSBR_TEST_PASS;
+	kfree(msg);
+
+	g_test_result = IMSBR_TEST_PASS;
 }
 
 static void imsbr_test_cptuple_reset(unsigned long unused)
 {
-    struct imsbr_msghdr msg = {};
-    struct call_c_function ccf = { };
+	struct imsbr_msghdr *msg = (struct imsbr_msghdr *)kzalloc(sizeof(struct imsbr_msghdr) + IMSBR_CTRL_BLKSZ * sizeof(char), GFP_KERNEL);
+	struct call_c_function ccf = { };
 
-    g_test_result = IMSBR_TEST_INPROGRESS;
-    call_core_function(&ccf);
+	g_test_result = IMSBR_TEST_INPROGRESS;
+	call_core_function(&ccf);
 
-    msg.imsbr_payload[0] = 1;
+	msg->imsbr_payload[0] = 0;
+	msg->imsbr_payload[1] = 0;
+	msg->imsbr_payload[2] = 0;
+	msg->imsbr_payload[3] = 1;
+	ccf.cptuple_reset(msg, 0);
 
-    ccf.cptuple_reset(&msg, 0);
+	kfree(msg);
 
-    g_test_result = IMSBR_TEST_PASS;
+	g_test_result = IMSBR_TEST_PASS;
 }
 
 static void imsbr_test_cp_reset(unsigned long unused)
 {
-    struct imsbr_msghdr msg = {};
-    struct call_c_function ccf = { };
+	struct imsbr_msghdr msg = {};
+	struct call_c_function ccf = { };
 
-    g_test_result = IMSBR_TEST_INPROGRESS;
-    call_core_function(&ccf);
+	g_test_result = IMSBR_TEST_INPROGRESS;
+	call_core_function(&ccf);
 
-    ccf.cp_reset(&msg, 0);
-    g_test_result = IMSBR_TEST_PASS;
+	ccf.cp_reset(&msg, 0);
+	g_test_result = IMSBR_TEST_PASS;
 }
 
 static void imsbr_test_echo_ping(unsigned long unused)
 {
-    struct imsbr_msghdr msg = {};
-    struct call_c_function ccf = { };
+	struct imsbr_msghdr *msg = (struct imsbr_msghdr *)kzalloc(sizeof(struct imsbr_msghdr) + IMSBR_CTRL_BLKSZ * sizeof(char), GFP_KERNEL);
+	struct call_c_function ccf = { };
 
-    g_test_result = IMSBR_TEST_INPROGRESS;
-    call_core_function(&ccf);
-    strcpy(msg.imsbr_payload, "hello imsbr");
+	g_test_result = IMSBR_TEST_INPROGRESS;
+	call_core_function(&ccf);
+	strcpy(msg->imsbr_payload, "hello imsbr");
 
-    ccf.echo_ping(&msg, 0);
+	ccf.echo_ping(msg, 0);
 
-    g_test_result = IMSBR_TEST_PASS;
+	kfree(msg);
+
+	g_test_result = IMSBR_TEST_PASS;
 }
 
 static void imsbr_test_echo_pong(unsigned long unused)
 {
-    struct imsbr_msghdr msg = {};
-    struct call_c_function ccf = { };
+	struct imsbr_msghdr *msg = (struct imsbr_msghdr *)kzalloc(sizeof(struct imsbr_msghdr) + IMSBR_CTRL_BLKSZ * sizeof(char), GFP_KERNEL);
+	struct call_c_function ccf = { };
 
-    g_test_result = IMSBR_TEST_INPROGRESS;
-    call_core_function(&ccf);
-    strcpy(msg.imsbr_payload, "hello imsbr");
+	g_test_result = IMSBR_TEST_INPROGRESS;
+	call_core_function(&ccf);
+	strcpy(msg->imsbr_payload, "hello imsbr");
 
-    ccf.echo_pong(&msg, 0);
+	ccf.echo_pong(msg, 0);
 
-    g_test_result = IMSBR_TEST_PASS;
+	kfree(msg);
+
+	g_test_result = IMSBR_TEST_PASS;
 }
 
 static void imsbr_test_pkt2skb(unsigned long unused)

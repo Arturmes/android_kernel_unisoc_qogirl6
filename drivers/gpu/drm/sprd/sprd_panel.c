@@ -169,7 +169,10 @@ void  sprd_panel_enter_doze(struct drm_panel *p)
 		cancel_delayed_work_sync(&panel->esd_work);
 		panel->esd_work_pending = false;
 	}
-
+	if (panel->esd_work_new_pending) {
+		cancel_delayed_work_sync(&panel->esd_work_new);
+		panel->esd_work_new_pending = false;
+	}
 	sprd_panel_send_cmds(panel->slave,
 	       panel->info.cmds[CMD_CODE_DOZE_IN],
 	       panel->info.cmds_len[CMD_CODE_DOZE_IN]);
@@ -189,7 +192,12 @@ void  sprd_panel_exit_doze(struct drm_panel *p)
 		panel->info.cmds[CMD_CODE_DOZE_OUT],
 		panel->info.cmds_len[CMD_CODE_DOZE_OUT]);
 
-	if (panel->info.esd_check_en) {
+	if (panel->info.bta_en) {
+		schedule_delayed_work(&panel->esd_work_new,
+				      msecs_to_jiffies(16));
+		panel->esd_work_new_pending = true;
+	}
+	if (panel->info.esd_conf.esd_check_en) {
 		schedule_delayed_work(&panel->esd_work,
 				      msecs_to_jiffies(1000));
 		panel->esd_work_pending = true;
@@ -204,7 +212,6 @@ static int sprd_panel_disable(struct drm_panel *p)
 
 	DRM_INFO("%s()\n", __func__);
 
-	mutex_lock(&panel_lock);
 	/*
 	 * FIXME:
 	 * The cancel work should be executed before DPU stop,
@@ -213,10 +220,19 @@ static int sprd_panel_disable(struct drm_panel *p)
 	 * CMD mode yet. Since there is no VBLANK timing for
 	 * LP cmd transmission.
 	 */
+
+	panel->is_enabled = false;
 	if (panel->esd_work_pending) {
 		cancel_delayed_work_sync(&panel->esd_work);
 		panel->esd_work_pending = false;
 	}
+
+	if (panel->esd_work_new_pending) {
+		cancel_delayed_work_sync(&panel->esd_work_new);
+		panel->esd_work_new_pending = false;
+	}
+
+	mutex_lock(&panel_lock);
 
 	if (panel->backlight) {
 		panel->backlight->props.power = FB_BLANK_POWERDOWN;
@@ -228,7 +244,6 @@ static int sprd_panel_disable(struct drm_panel *p)
 			     panel->info.cmds[CMD_CODE_SLEEP_IN],
 			     panel->info.cmds_len[CMD_CODE_SLEEP_IN]);
 
-	panel->is_enabled = false;
 	mutex_unlock(&panel_lock);
 
 	return 0;
@@ -285,10 +300,17 @@ static int sprd_panel_enable(struct drm_panel *p)
 		backlight_update_status(panel->backlight);
 	}
 
-	if (panel->info.esd_check_en) {
+	if (panel->info.esd_conf.esd_check_en) {
 		schedule_delayed_work(&panel->esd_work,
 				      msecs_to_jiffies(1000));
 		panel->esd_work_pending = true;
+		panel->esd_work_backup = false;
+	}
+
+	if (panel->info.bta_en) {
+		schedule_delayed_work(&panel->esd_work_new,
+				      msecs_to_jiffies(16));
+		panel->esd_work_new_pending = true;
 	}
 
 	panel->is_enabled = true;
@@ -376,28 +398,86 @@ static const struct drm_panel_funcs sprd_panel_funcs = {
 static int sprd_panel_esd_check(struct sprd_panel *panel)
 {
 	struct panel_info *info = &panel->info;
-	u8 read_val = 0;
+	u8 read_val[4] = {0x00};
+	int i, j, last_rd_count = 0;
+
+	mutex_lock(&panel_lock);
 
 	if (!panel->base.connector ||
 	    !panel->base.connector->encoder ||
 	    !panel->base.connector->encoder->crtc) {
+		mutex_unlock(&panel_lock);
+		return 0;
+	}
+
+	if (!panel->is_enabled) {
+		DRM_INFO("panel is not enabled, skip esd check\n");
+		mutex_unlock(&panel_lock);
+		return 0;
+	}
+
+	for (i = 0; i < info->esd_conf.esd_check_reg_count; i++) {
+		mipi_dsi_set_maximum_return_packet_size(panel->slave,
+                                                        info->esd_conf.val_len_array[i]);
+		mipi_dsi_dcs_read(panel->slave, info->esd_conf.reg_seq[i],
+			  &read_val, info->esd_conf.val_len_array[i]);
+		//DRM_INFO("---: sprd_panel_esd_check reg_seq[%d] 0x%x = 0x%x\n", i,info->esd_conf.reg_seq[i], read_val[i]);
+		for (j = 0; j < info->esd_conf.val_len_array[i]; j++) {
+			if (read_val[j] != info->esd_conf.val_seq[j + last_rd_count]) {
+				DRM_ERROR("esd check failed, read value = 0x%02x\n",
+						read_val);
+				mutex_unlock(&panel_lock);
+				return -EINVAL;
+			}
+		}
+		last_rd_count += info->esd_conf.val_len_array[i];
+	}
+
+	mutex_unlock(&panel_lock);
+
+	return 0;
+}
+
+#ifdef CONFIG_TP_ENABLE_LCD_BTA
+void enable_lcd_bta_check(void){
+	if(!(IS_ERR_OR_NULL(g_panel) || g_panel->info.bta_en)){
+		g_panel->info.bta_en = true;
+		schedule_delayed_work(&g_panel->esd_work_new, msecs_to_jiffies(16));
+		g_panel->esd_work_new_pending = true;
+	}
+}
+EXPORT_SYMBOL(enable_lcd_bta_check);
+#endif
+
+static int sprd_panel_bta_check(struct sprd_panel *panel)
+{
+	struct panel_info *info = &panel->info;
+	u8 read_val = 0;
+
+//DRM_INFO("sprd_panel_bta_check enter\n");
+	mutex_lock(&panel_lock);
+
+	if (!panel->is_enabled) {
+		DRM_INFO("panel is not enabled, skip esd check\n");
+		mutex_unlock(&panel_lock);
+		return 0;
+	}
+	if (!panel->base.connector ||
+	    !panel->base.connector->encoder ||
+	    !panel->base.connector->encoder->crtc) {
+		mutex_unlock(&panel_lock);
 		return 0;
 	}
 
 	/* FIXME: we should enable HS cmd tx here */
 	mipi_dsi_set_maximum_return_packet_size(panel->slave, 1);
-	mipi_dsi_dcs_read(panel->slave, info->esd_check_reg,
-			  &read_val, 1);
+	mipi_dsi_dcs_read(panel->slave, info->bta_check_reg, &read_val, 1);
 
+	mutex_unlock(&panel_lock);
 	/*
 	 * TODO:
 	 * Should we support multi-registers check in the future?
 	 */
-	if (read_val != info->esd_check_val) {
-		DRM_ERROR("esd check failed, read value = 0x%02x\n",
-			  read_val);
-		return -EINVAL;
-	}
 
 	return 0;
 }
@@ -409,9 +489,17 @@ static int sprd_panel_te_check(struct sprd_panel *panel)
 	int ret;
 	bool irq_occur = false;
 
+	mutex_lock(&panel_lock);
 	if (!panel->base.connector ||
 	    !panel->base.connector->encoder ||
 	    !panel->base.connector->encoder->crtc) {
+		mutex_unlock(&panel_lock);
+		return 0;
+	}
+
+	if (!panel->is_enabled) {
+		DRM_INFO("panel is not enabled, skip esd check\n");
+		mutex_unlock(&panel_lock);
 		return 0;
 	}
 
@@ -426,8 +514,10 @@ static int sprd_panel_te_check(struct sprd_panel *panel)
 	}
 
 	/* DPU TE irq maybe enabled in kernel */
-	if (!dpu->ctx.is_inited)
+	if (!dpu->ctx.is_inited) {
+		mutex_unlock(&panel_lock);
 		return 0;
+	}
 
 	dpu->ctx.te_check_en = true;
 
@@ -456,6 +546,8 @@ static int sprd_panel_te_check(struct sprd_panel *panel)
 	dpu->ctx.te_check_en = false;
 	dpu->ctx.evt_te = false;
 
+	mutex_unlock(&panel_lock);
+
 	return ret < 0 ? ret : 0;
 }
 
@@ -465,6 +557,25 @@ void trriger_lcd_esd(void){
 }
 EXPORT_SYMBOL(trriger_lcd_esd);
 
+static int sprd_panel_mix_check(struct sprd_panel *panel)
+{
+	int ret;
+
+	ret = sprd_panel_esd_check(panel);
+	if (ret) {
+		DRM_ERROR("mix check use read reg with error\n");
+		return ret;
+	}
+
+	ret = sprd_panel_te_check(panel);
+	if (ret) {
+		DRM_ERROR("mix check use te signal with error\n");
+		return ret;
+	}
+
+	return 0;
+}
+
 static void sprd_panel_esd_work_func(struct work_struct *work)
 {
 	struct sprd_panel *panel = container_of(work, struct sprd_panel,
@@ -472,12 +583,14 @@ static void sprd_panel_esd_work_func(struct work_struct *work)
 	struct panel_info *info = &panel->info;
 	int ret;
 
-	if (info->esd_check_mode == ESD_MODE_REG_CHECK)
+	if (info->esd_conf.esd_check_mode == ESD_MODE_REG_CHECK)
 		ret = sprd_panel_esd_check(panel);
-	else if (info->esd_check_mode == ESD_MODE_TE_CHECK)
+	else if (info->esd_conf.esd_check_mode == ESD_MODE_TE_CHECK)
 		ret = sprd_panel_te_check(panel);
+	else if (info->esd_conf.esd_check_mode == ESD_MODE_MIX_CHECK)
+		ret = sprd_panel_mix_check(panel);
 	else {
-		DRM_ERROR("unknown esd check mode:%d\n", info->esd_check_mode);
+		DRM_ERROR("unknown esd check mode:%d\n", info->esd_conf.esd_check_mode);
 		return;
 	}
 
@@ -488,11 +601,13 @@ static void sprd_panel_esd_work_func(struct work_struct *work)
 		encoder = panel->base.connector->encoder;
 		funcs = encoder->helper_private;
 		panel->esd_work_pending = false;
+		panel->esd_work_new_pending = false;
 		esd_trriger = false;
 
 		if (!encoder->crtc || (encoder->crtc->state &&
 		    !encoder->crtc->state->active)) {
 			DRM_INFO("skip esd recovery during panel suspend\n");
+			panel->esd_work_backup = true;
 			return;
 		}
 
@@ -508,12 +623,22 @@ static void sprd_panel_esd_work_func(struct work_struct *work)
 				sprd_oled_set_brightness(panel->oled_bdev);
 			}
 		}
+
+		if (!panel->esd_work_pending && panel->is_enabled)
+			schedule_delayed_work(&panel->esd_work,
+					msecs_to_jiffies(info->esd_conf.esd_check_period));
 		DRM_INFO("======= esd recovery end =========\n");
 	} else
 		schedule_delayed_work(&panel->esd_work,
-			msecs_to_jiffies(info->esd_check_period));
+			msecs_to_jiffies(info->esd_conf.esd_check_period));
 }
+static void sprd_panel_esd_new_work_func(struct work_struct *work)
+{
+	struct sprd_panel *panel = container_of(work, struct sprd_panel,esd_work_new.work);
 
+	sprd_panel_bta_check(panel);
+	schedule_delayed_work(&panel->esd_work_new, msecs_to_jiffies(16));
+}
 static int sprd_panel_gpio_request(struct device *dev,
 			struct sprd_panel *panel)
 {
@@ -688,6 +813,12 @@ static int sprd_oled_set_brightness(struct backlight_device *bdev)
 
 	if (bdev->props.brightness > 255)
 		bdev->props.brightness = 255;
+
+	if ((bdev->props.brightness == 0) && (strncmp("lcd_gc7202_hlt_mipi_hdp", lcd_name, 28) == 0) ) {
+		uint8_t dimming_trans[] = {0x29, 0x00, 0x00, 0x02, 0x53, 0x28};
+		DRM_INFO("%s set 3rd set dimming 53 28!!!\n", __func__);
+		sprd_panel_send_cmds(panel->slave, dimming_trans, 6);
+	}
 
 	brightness = bdev->props.brightness;
 
@@ -902,7 +1033,7 @@ u8 sprdp_parse_cabc_cmd(struct device_node *lcd_node, struct sprd_panel *panel)
 		info->cmds_len[CMD_CODE_CABC_OFF] = bytes;
 
 		info->cabc_valid |= PANEL_CABC_OFF;
-		if(info->cabc_mode)
+		if(!info->cabc_mode)
 			info->cabc_mode = PANEL_CABC_OFF;
 	} else
 		DRM_ERROR("can't find sprd,cabc-off-mode property\n");
@@ -916,7 +1047,7 @@ int sprd_panel_parse_lcddtb(struct device_node *lcd_node,
 {
 	u32 val;
 	struct panel_info *info = &panel->info;
-	int bytes, rc;
+	int bytes, rc, i, ret = 0;
 	const void *p;
 	const char *str;
 
@@ -981,33 +1112,67 @@ int sprd_panel_parse_lcddtb(struct device_node *lcd_node,
 	else
 		info->mode.height_mm = 121;
 
+	rc = of_property_read_u32(lcd_node, "sprd,bta-enable", &val);
+	if (!rc)
+#ifdef CONFIG_TP_ENABLE_LCD_BTA
+		info->bta_en = false;
+#else
+		info->bta_en = val;
+#endif
+	rc = of_property_read_u32(lcd_node, "sprd,bta-check-register", &val);
+	if (!rc)
+		info->bta_check_reg = val;
+
 	rc = of_property_read_u32(lcd_node, "sprd,esd-check-enable", &val);
 	if (!rc)
-		info->esd_check_en = val;
+		info->esd_conf.esd_check_en = val;
 
 	rc = of_property_read_u32(lcd_node, "sprd,esd-check-mode", &val);
 	if (!rc)
-		info->esd_check_mode = val;
+		info->esd_conf.esd_check_mode = val;
 	else
-		info->esd_check_mode = 1;
+		info->esd_conf.esd_check_mode = 1;
 
 	rc = of_property_read_u32(lcd_node, "sprd,esd-check-period", &val);
 	if (!rc)
-		info->esd_check_period = val;
+		info->esd_conf.esd_check_period = val;
 	else
-		info->esd_check_period = 1000;
+		info->esd_conf.esd_check_period = 1000;
 
-	rc = of_property_read_u32(lcd_node, "sprd,esd-check-register", &val);
+	rc = of_property_read_u32(lcd_node, "sprd,esd-check-reg-count", &val);
 	if (!rc)
-		info->esd_check_reg = val;
-	else
-		info->esd_check_reg = 0x0A;
+		info->esd_conf.esd_check_reg_count = val;
 
-	rc = of_property_read_u32(lcd_node, "sprd,esd-check-value", &val);
-	if (!rc)
-		info->esd_check_val = val;
-	else
-		info->esd_check_val = 0x9C;
+	if (info->esd_conf.esd_check_reg_count) {
+		info->esd_conf.reg_seq = kzalloc(info->esd_conf.esd_check_reg_count, GFP_KERNEL);
+		rc = of_property_read_u8_array(lcd_node, "sprd,esd-check-register",
+				info->esd_conf.reg_seq, info->esd_conf.esd_check_reg_count);
+		if (rc)
+			ret = -EINVAL;
+
+		info->esd_conf.val_len_array = kzalloc(info->esd_conf.esd_check_reg_count,
+                                                       GFP_KERNEL);
+		rc = of_property_read_u32_array(lcd_node, "sprd,esd-check-value-len",
+				info->esd_conf.val_len_array, info->esd_conf.esd_check_reg_count);
+		for (i = 0; i < info->esd_conf.esd_check_reg_count; i++)
+			info->esd_conf.total_esd_val_count += info->esd_conf.val_len_array[i];
+		if (rc)
+			ret = -EINVAL;
+
+		info->esd_conf.val_seq = kzalloc(info->esd_conf.total_esd_val_count, GFP_KERNEL);
+		rc = of_property_read_u8_array(lcd_node, "sprd,esd-check-value",
+				info->esd_conf.val_seq, info->esd_conf.total_esd_val_count);
+		if (rc)
+			ret = -EINVAL;
+
+		if (ret) {
+			info->esd_conf.reg_seq[0] = 0x0a;
+			info->esd_conf.val_seq[0] = 0x9c;
+			info->esd_conf.val_len_array[0] = 1;
+			info->esd_conf.total_esd_val_count = 1;
+		}
+	}
+
 
 	rc = of_property_read_u32(lcd_node, "sprd,power-gpio-delay", &val);
 	if (!rc)
@@ -1157,6 +1322,7 @@ static int sprd_panel_probe(struct mipi_dsi_device *slave)
 	}
 
 	INIT_DELAYED_WORK(&panel->esd_work, sprd_panel_esd_work_func);
+	INIT_DELAYED_WORK(&panel->esd_work_new, sprd_panel_esd_new_work_func);
 
 	ret = sprd_panel_parse_dt(slave->dev.of_node, panel);
 	if (ret) {
@@ -1220,14 +1386,22 @@ static int sprd_panel_probe(struct mipi_dsi_device *slave)
 	 * callback function. But the dsi encoder will not call
 	 * drm_panel_enable() the first time in encoder_enable().
 	 */
-	if (panel->info.esd_check_en) {
+	if (panel->info.esd_conf.esd_check_en) {
 		schedule_delayed_work(&panel->esd_work,
 				      msecs_to_jiffies(2000));
 		panel->esd_work_pending = true;
 	}
 
-	panel->is_enabled = true;
+	if (panel->info.bta_en) {
+		schedule_delayed_work(&panel->esd_work_new,
+				      msecs_to_jiffies(16));
+		panel->esd_work_new_pending = true;
+	}
 
+	panel->is_enabled = true;
+#ifdef CONFIG_TP_ENABLE_LCD_BTA
+	g_panel = panel;
+#endif
 	DRM_INFO("panel driver probe success\n");
 
 	return 0;

@@ -74,6 +74,14 @@ enum TIMING {
 };
 
 struct pll_regs {
+	union __reg_02__ {
+		struct __02 {
+			u8 testpll: 2;
+			u8 trimbg: 4;
+			u8 lp_sel: 2;
+		} bits;
+		u8 val;
+	} _02;
 	union __reg_03__ {
 		struct __03 {
 			u8 prbs_bist: 1;
@@ -351,6 +359,9 @@ static int dphy_set_pll_reg(struct regmap *regmap, struct dphy_pll *pll)
 	if (!pll || !pll->fvco)
 		goto FAIL;
 
+	regs._02.bits.lp_sel = 1;
+	regs._02.bits.trimbg = 1 << 3;
+	regs._02.bits.testpll = 0;
 	regs._03.bits.prbs_bist = 1;
 	regs._03.bits.en_lp_treot = true;
 	regs._03.bits.lpf_sel = pll->lpf_sel;
@@ -381,6 +392,7 @@ static int dphy_set_pll_reg(struct regmap *regmap, struct dphy_pll *pll)
 	regs._0f.bits.det_delay = pll->det_delay;
 	regs._0f.bits.kdelta =  pll->kdelta >> 12;
 
+	regmap_write(regmap, 0x02, regs._02.val);
 	regmap_write(regmap, 0x03, regs._03.val);
 	regmap_write(regmap, 0x04, regs._04.val);
 	regmap_write(regmap, 0x07, regs._07.val);

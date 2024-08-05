@@ -50,7 +50,12 @@ struct dib_header {
 	u32 unused[12];
 } __attribute__((__packed__));
 
-int str_to_u32_array(const char *p, u32 base, u32 array[])
+/*
+* Modify for Bug 1723972 - SI-23255: Stack buffer overflow in str_to_u32_array function, used in few store system calls.
+* Jira:KSG_M168_A01-2995
+* int str_to_u32_array(const char *p, u32 base, u32 array[])
+*/
+int str_to_u32_array(const char *p, u32 base, u32 array[], ssize_t size)
 {
 	const char *start = p;
 	char str[12];
@@ -59,7 +64,11 @@ int str_to_u32_array(const char *p, u32 base, u32 array[])
 
 	pr_info("input: %s", p);
 
-	for (i = 0 ; i < 255; i++) {
+/** Modify for Bug 1723972 - SI-23255: Stack buffer overflow in str_to_u32_array function, used in few store system calls.
+* Jira:KSG_M168_A01-2995
+*	for (i = 0 ; i < 255; i++) {
+*/
+	for (i = 0 ; i < size; i++) {
 		while (*p == ' ')
 			p++;
 		if (*p == '\0')

@@ -133,6 +133,8 @@ struct sprd_headset {
 	struct delayed_work fc_work; /* for fast charge */
 	struct delayed_work lineout_work;
 	struct workqueue_struct *lineout_work_q;
+        struct delayed_work det_disbutton_work;
+        struct workqueue_struct *det_disbutton_work_q;
 #ifdef ADPGAR_BYP_SELECT
 	/* used for adpgar bypass selecting. */
 	struct delayed_work adpgar_work;
@@ -160,6 +162,7 @@ struct sprd_headset {
 	struct extcon_dev *edev;
 	struct notifier_block typec_plug_nb;
 	enum typec_status type_status;
+	bool disable_button;
 };
 
 struct sprd_headset_global_vars {

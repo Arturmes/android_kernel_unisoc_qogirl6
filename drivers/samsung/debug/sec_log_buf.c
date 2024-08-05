@@ -27,7 +27,6 @@
 #include <linux/reboot.h>
 #include <linux/rtc.h>
 #include <linux/time.h>
-//#include <linux/memblock.h>
 #include "sec_debug_internal.h"
 
 /*
@@ -197,6 +196,9 @@ static void lpm_klog_store(void)
 			len = sec_log_buf_size - idx;
 			if (len != 0)
 				memcpy(lpm_klog_write_buf, &(lpm_klog_buf->buf[idx]), len);
+		} else {
+			idx = lpm_klog_buf->idx % sec_log_buf_size; 
+			len = 0; 
 		}
 
 		memcpy(lpm_klog_write_buf + len, lpm_klog_buf->buf, idx);                
@@ -325,8 +327,16 @@ static int sec_log_store(struct notifier_block *nb,
 	switch (action) {
 	case SYS_RESTART:
 	case SYS_POWER_OFF:
-		pr_info("%s, %s, %ptR(TZ:%02d)\n",
-				action == SYS_RESTART ? "reboot" : "power off", cmd, &local_tm, -sys_tz.tz_minuteswest / 60);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,4,0)
+		pr_info("%ptR(TZ:%02d), %s, %s\n",
+				&local_tm, -sys_tz.tz_minuteswest / 60,
+				action == SYS_RESTART ? "reboot" : "power off", cmd);
+#else
+		pr_info("%d-%02d-%02d %02d:%02d:%02d(TZ:%02d), %s, %s\n",
+				local_tm.tm_year + 1900, local_tm.tm_mon + 1, local_tm.tm_mday,
+				local_tm.tm_hour, local_tm.tm_min, local_tm.tm_sec, -sys_tz.tz_minuteswest / 60,
+				action == SYS_RESTART ? "reboot" : "power off", cmd);
+#endif
 		write_debug_partition(debug_index_reset_klog, s_log_buf);
 		break;
 	}
@@ -366,12 +376,10 @@ static void sec_log_buf_write_console(struct console *console, const char *s,
 	__sec_log_buf_write(s, count);
 }
 
-#ifdef CONFIG_SEC_LOG_BUF_NO_CONSOLE
 void sec_log_buf_write(const char *s, unsigned int count)
 {
 	__sec_log_buf_write(s, count);
 }
-#endif
 
 static struct console sec_log_console = {
 	.name	= "sec_log_buf",
@@ -382,14 +390,7 @@ static struct console sec_log_console = {
 
 static inline int __sec_log_buf_prepare(void)
 {
-//	int err;
-
 	pr_info("printk virtual addrs phy=%pa\n", &sec_log_paddr);
-
-	//wa code 
-  // 	err = memblock_remove(0x90000000, 0xb00000);
-//	if(err<0)
-//			printk("remove memblcok  errrrrrrrrrrrrrr\n");
 
 	if (sec_debug_is_enabled())
 		s_log_buf = ioremap_wc(sec_log_paddr, sec_log_size);

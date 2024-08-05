@@ -73,23 +73,33 @@ int lcd_bias_set_avdd_avee(void)
 	int err;
 	u8 val[4] = {0x13, 0x13, 0x00, 0x00};
 
-	err = lcd_bias_i2c_write(0x00, &val[0], 1);
-	if (err < 0) {
-		SM_ERR("lcd_bias i2c write reg-0x00 error:%d\n", err);
-		return err;
+	/* set avdd */
+	lcd_bias_i2c_read(0x00, &val[2], 1);
+	SM_INFO("i2c read reg-0x00 :0x%x\n", val[2]);
+	if (0x13 != val[2]) {
+		err = lcd_bias_i2c_write(0x00, &val[0], 1);
+		if (err < 0) {
+			SM_ERR("i2c write reg-0x01 error:%d\n", err);
+			return err;
+		} else {
+			err = lcd_bias_i2c_read(0x00, &val[2], 1);
+			SM_INFO("i2c read reg-0x00 :0x%x\n", val[2]);
+		}
 	}
 
-	err = lcd_bias_i2c_write(0x01, &val[1], 1);
-	if (err < 0) {
-		SM_ERR("lcd_bias i2c write reg-0x00 error:%d\n", err);
-		return err;
+	/* set avee*/
+	lcd_bias_i2c_read(0x01, &val[3], 1);
+	SM_INFO("i2c read reg-0x01 :0x%x\n", val[3]);
+	if (0x13 != val[3]) {
+		err = lcd_bias_i2c_write(0x01, &val[1], 1);
+		if (err < 0) {
+			SM_ERR("i2c write reg-0x01 error:%d\n", err);
+			return err;
+		} else {
+			err = lcd_bias_i2c_read(0x01, &val[3], 1);
+			SM_INFO("i2c read reg-0x01 :0x%x\n", val[3]);
+		}
 	}
-
-	err = lcd_bias_i2c_read(0x00, &val[2], 1);
-	SM_INFO("lcd_bias i2c read reg-0x00 :0x%x\n", val[2]);
-	err = lcd_bias_i2c_read(0x01, &val[3], 1);
-	SM_INFO("lcd_bias i2c read reg-0x00 :0x%x\n", val[3]);
-
 	return 0;
 }
 

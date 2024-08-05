@@ -100,6 +100,12 @@ config SND_SOC_SPRD_PIKE2
 	  Say Y or M here if you want to add support for ASoC audio on Spreadtrum
 	  boards using pike2 chip
 
+config SND_SOC_AW882XX
+	tristate "SoC Audio for awinic aw882xx series"
+	default n
+	help
+	  This option enables support for aw882xx series Smart PA.
+
 source "sound/soc/sprd/dai/Kconfig"
 source "sound/soc/sprd/dai/vbc/Kconfig"
 source "sound/soc/sprd/dai/i2s/Kconfig"

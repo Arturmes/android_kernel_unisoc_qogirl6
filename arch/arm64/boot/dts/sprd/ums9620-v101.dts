@@ -381,7 +381,7 @@
 	first-calib-capacity = <50>;
 	fgu-capacity-track;
 	fullbatt-track-end-vol = <4295>;
-	fullbatt-track-end-cur = <125>;
+	fullbatt-track-end-cur = <130>;
 	phys = <&hsphy>;
 };
 

@@ -587,9 +587,13 @@ int extcon_set_state_sync(struct extcon_dev *edev, unsigned int id, bool state)
 	int ret, index;
 	unsigned long flags;
 
+	printk("##%s## -enter- id=%d, state=%d\n", __func__, id, state);
+
 	index = find_cable_index_by_id(edev, id);
 	if (index < 0)
 		return index;
+
+	printk("##%s## -1- index=%d\n", __func__, index);
 
 	/* Check whether the external connector's state is changed. */
 	spin_lock_irqsave(&edev->lock, flags);
@@ -598,9 +602,13 @@ int extcon_set_state_sync(struct extcon_dev *edev, unsigned int id, bool state)
 	if (!ret)
 		return 0;
 
+	printk("##%s## -2-\n", __func__);
+
 	ret = extcon_set_state(edev, id, state);
 	if (ret < 0)
 		return ret;
+
+	printk("##%s## -3-\n", __func__);
 
 	return extcon_sync(edev, id);
 }

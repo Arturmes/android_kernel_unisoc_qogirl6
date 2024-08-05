@@ -110,6 +110,11 @@
 /* Definition of PMIC reset status register */
 #define HWRST_STATUS_DEBUGLOW		0x10
 #define HWRST_STATUS_RECOVERY		0x20
+#define HWRST_STATUS_RORYSTART   0x21
+/* here is reserved for rory download. */
+/* don't use betwwen PON_RESTART_REASON_RORY_START */
+/*   & PON_RESTART_REASON_RORY_END */
+#define HWRST_STATU_RORYEND     0x2b
 #define HWRST_STATUS_NORMAL		0x40
 #define HWRST_STATUS_ALARM		0x50
 #define HWRST_STATUS_SLEEP		0x60
@@ -442,7 +447,7 @@ static int sprd_adi_restart_handler(struct notifier_block *this,
 		reboot_mode = HWRST_STATUS_SECURITY;
 	else if (!strncmp(cmd, "factorytest", 11))
 		reboot_mode = HWRST_STATUS_FACTORYTEST;
-	else if (!strncmp(cmd, "debug", 5)){
+	else if (!strncmp(cmd, "debug", 5)) {
 		 if (!kstrtoul(cmd + 5, 0, &opt_code)) {
 			switch (opt_code) {
 				case ANDROID_DEBUG_LEVEL_LOW:					
@@ -459,12 +464,20 @@ static int sprd_adi_restart_handler(struct notifier_block *this,
 			}
 		} else
 			reboot_mode = HWRST_STATUS_NORMAL;
+	} else if (!strncmp(cmd, "sud", 3)) {
+		 if (!kstrtoul(cmd + 3, 0, &opt_code)) {
+			if (( opt_code >=0 ) && (opt_code <= 10)) 
+				reboot_mode = HWRST_STATUS_RORYSTART + opt_code;
+			else
+				reboot_mode = HWRST_STATUS_NORMAL;			
+		} else
+			reboot_mode = HWRST_STATUS_NORMAL;
 	} else
 		reboot_mode = HWRST_STATUS_NORMAL;
 
 	/* Record the reboot mode */
 	sprd_adi_read(sadi, sadi->slave_pbase + sadi->data->rst_sts, &val);
-	val &= ~HWRST_STATUS_WATCHDOG;
+	val &= ~0xff;
 	val |= reboot_mode;
 	sprd_adi_write(sadi, sadi->slave_pbase + sadi->data->rst_sts, val);
 

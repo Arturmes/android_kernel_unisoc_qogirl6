@@ -101,6 +101,11 @@
 
 #include <test/test.h>
 
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+#include <linux/sec_debug.h>
+#include <linux/sec_bootstat.h>
+#endif
+
 static int kernel_init(void *);
 
 extern void init_IRQ(void);
@@ -386,6 +391,9 @@ static void __init setup_command_line(char *command_line)
 	static_command_line = memblock_virt_alloc(strlen(command_line) + 1, 0);
 	strcpy(saved_command_line, boot_command_line);
 	strcpy(static_command_line, command_line);
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+	sec_debug_get_erased_command_line();
+#endif
 }
 
 /*
@@ -592,7 +600,14 @@ asmlinkage __visible void __init start_kernel(void)
 	build_all_zonelists(NULL);
 	page_alloc_init();
 
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+	pr_notice("Kernel command line: %s\n",
+			!IS_ENABLED(CONFIG_SAMSUNG_PRODUCT_SHIP) ?
+			boot_command_line :
+			sec_debug_get_erased_command_line());
+#else
 	pr_notice("Kernel command line: %s\n", boot_command_line);
+#endif
 	/* parameters may set static keys */
 	jump_label_init();
 	parse_early_param();
@@ -841,6 +856,41 @@ static bool __init_or_module initcall_blacklisted(initcall_t fn)
 #endif
 __setup("initcall_blacklist=", initcall_blacklist);
 
+#if IS_ENABLED(CONFIG_SEC_BOOTSTAT)
+static bool __init_or_module initcall_sec_debug = true;
+static DEFINE_SPINLOCK(device_init_time_list_lock);
+
+static int __init_or_module do_one_initcall_sec_debug(initcall_t fn)
+{
+	ktime_t calltime, delta, rettime;
+	unsigned long long duration;
+	int ret;
+	struct device_init_time_entry *entry;
+
+	calltime = ktime_get();
+	ret = fn();
+	rettime = ktime_get();
+	delta = ktime_sub(rettime, calltime);
+	duration = (unsigned long long) ktime_to_ns(delta) >> 10;
+	if (duration > DEVICE_INIT_TIME_100MS) {
+		printk(KERN_DEBUG "initcall %pF returned %d after %lld usecs\n",
+				fn, ret, duration);
+		entry = kmalloc(sizeof(*entry), GFP_KERNEL);
+		if (!entry)
+			return -ENOMEM;
+		entry->buf = kasprintf(GFP_KERNEL, "%pf", fn);
+		if (!entry->buf)
+			return -ENOMEM;
+		entry->duration = duration;
+		spin_lock(&device_init_time_list_lock);
+		list_add(&entry->next, &device_init_time_list);
+		spin_unlock(&device_init_time_list_lock);
+	}
+
+	return ret;
+}
+#endif
+
 static int __init_or_module do_one_initcall_debug(initcall_t fn)
 {
 	ktime_t calltime, delta, rettime;
@@ -871,7 +921,12 @@ int __init_or_module do_one_initcall(initcall_t fn)
 	if (initcall_debug)
 		ret = do_one_initcall_debug(fn);
 	else
-		ret = fn();
+#if IS_ENABLED(CONFIG_SEC_BOOTSTAT)
+		if (initcall_sec_debug)
+			ret = do_one_initcall_sec_debug(fn);
+		else
+#endif
+			ret = fn();
 
 	msgbuf[0] = 0;
 

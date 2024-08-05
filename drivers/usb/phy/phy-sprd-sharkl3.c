@@ -46,10 +46,10 @@ module_param(usb20_tuneotg_device, int, S_IRUGO | S_IWUSR);
 
 
 
-static unsigned int usb20_tfregres_host = 0x24;
+static unsigned int usb20_tfregres_host = 0x22;
 module_param(usb20_tfregres_host, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(usb20_tfregres_host, "These e-fuse signals adjust the internal REG resitor.(efuse)");
-static unsigned int usb20_tfhsres_host = 0x13;
+static unsigned int usb20_tfhsres_host = 0x0F;
 module_param(usb20_tfhsres_host, int, S_IRUGO | S_IWUSR);
 static unsigned int usb20_tunedsc_host = 0x3;
 module_param(usb20_tunedsc_host, int, S_IRUGO | S_IWUSR);

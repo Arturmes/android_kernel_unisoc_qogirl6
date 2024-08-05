@@ -357,18 +357,6 @@ enum {
 	CABC_DISABLED
 };
 
-enum disp_command {
-	TA_REG_SET = 1,
-	TA_REG_CLR,
-	TA_FIREWALL_SET,
-	TA_FIREWALL_CLR
-};
-
-struct disp_message {
-	u8 cmd;
-	struct layer_reg layer;
-};
-
 static struct scale_cfg scale_copy;
 static struct cm_cfg cm_copy;
 static struct slp_cfg slp_copy;
@@ -401,7 +389,6 @@ static int corner_radius;
 static struct device_node *g_np;
 static int secure_debug;
 static int time = 5000;
-static struct disp_message tos_msg;
 module_param(time, int, 0644);
 module_param(secure_debug, int, 0644);
 static u8 skip_layer_index;
@@ -991,6 +978,7 @@ static void dpu_dvfs_task_init(struct dpu_context *ctx)
 static int dpu_init(struct dpu_context *ctx)
 {
 	struct dpu_reg *reg = (struct dpu_reg *)ctx->base;
+	static bool tos_msg_alloc = false;
 	u32 size;
 
 	/* set bg color */
@@ -1026,6 +1014,22 @@ static int dpu_init(struct dpu_context *ctx)
 
 	frame_no = 0;
 
+	ctx->base_offset[0] = 0x0;
+	ctx->base_offset[1] = sizeof(struct dpu_reg) / 4;
+
+	/* Allocate memory for trusty */
+	if(!tos_msg_alloc){
+		ctx->tos_msg = kmalloc(sizeof(struct disp_message) +
+			sizeof(struct layer_reg), GFP_KERNEL);
+		if(!ctx->tos_msg)
+			return -ENOMEM;
+		tos_msg_alloc = true;
+	}
+
+/*
+* Modify for Bug 1727683 - SI-23330.
+* Jira:KSG_M168_A01-2995
+*/
 	ctx->base_offset[0] = 0x0;
 	ctx->base_offset[1] = sizeof(struct dpu_reg) / 4;
 
@@ -1326,22 +1330,27 @@ static void dpu_layer(struct dpu_context *ctx,
 			disp_ca_connect();
 			udelay(time);
 		}
-		tos_msg.cmd = TA_FIREWALL_SET;
-		disp_ca_write(&tos_msg, sizeof(tos_msg));
+		ctx->tos_msg->cmd = TA_FIREWALL_SET;
+		ctx->tos_msg->version = DPU_R5P0;
+		disp_ca_write(ctx->tos_msg, sizeof(*ctx->tos_msg));
 		disp_ca_wait_response();
 
-		tos_msg.cmd = TA_REG_SET;
-		tos_msg.layer = tmp;
-		disp_ca_write(&tos_msg, sizeof(tos_msg));
+		memcpy(ctx->tos_msg + 1, &tmp, sizeof(tmp));
+
+		ctx->tos_msg->cmd = TA_REG_SET;
+		ctx->tos_msg->version = DPU_R5P0;
+		disp_ca_write(ctx->tos_msg, sizeof(*ctx->tos_msg) + sizeof(tmp));
 		disp_ca_wait_response();
+
 		return;
 	} else if (reg->dpu_secure) {
-		tos_msg.cmd = TA_REG_CLR;
-		disp_ca_write(&tos_msg, sizeof(tos_msg));
+		ctx->tos_msg->cmd = TA_REG_CLR;
+		ctx->tos_msg->version = DPU_R5P0;
+		disp_ca_write(ctx->tos_msg, sizeof(*ctx->tos_msg));
 		disp_ca_wait_response();
 
-		tos_msg.cmd = TA_FIREWALL_CLR;
-		disp_ca_write(&tos_msg, sizeof(tos_msg));
+		ctx->tos_msg->cmd = TA_FIREWALL_CLR;
+		disp_ca_write(ctx->tos_msg, sizeof(*ctx->tos_msg));
 		disp_ca_wait_response();
 	}
 

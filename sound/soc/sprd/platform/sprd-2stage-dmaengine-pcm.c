@@ -289,8 +289,11 @@ static inline u32 sprd_pcm_dma_get_addr(struct dma_chan *dma_chn,
 					struct snd_pcm_substream *substream)
 {
 	struct dma_tx_state dma_state;
+	enum dma_status status;
 
-	dmaengine_tx_status(dma_chn, cookie, &dma_state);
+	status = dmaengine_tx_status(dma_chn, cookie, &dma_state);
+	if (status == DMA_ERROR)
+		pr_err("dma_tx_status error!\n");
 
 	return dma_state.residue;
 }

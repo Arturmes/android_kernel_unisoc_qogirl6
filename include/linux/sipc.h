@@ -247,6 +247,8 @@ enum {
 #define	SMSG_OPEN_MAGIC		0xBEEE
 #define	SMSG_CLOSE_MAGIC	0xEDDD
 
+#define ASSERT_INFO_LENGTH 256
+
 /**
 * sipc_get_wakeup_flag
 * after the wakeup flag be set, the fist smsg will be print

@@ -56,6 +56,7 @@ enum {
 enum {
 	ESD_MODE_REG_CHECK,
 	ESD_MODE_TE_CHECK,
+	ESD_MODE_MIX_CHECK,
 };
 #define PANEL_CABC_NONE  0
 #define PANEL_CABC_OFF   0
@@ -81,6 +82,19 @@ struct reset_sequence {
 	struct gpio_timing *timing;
 };
 
+struct panel_esd_config {
+	bool esd_check_en;
+	u8 esd_check_mode;
+	u8 esd_check_reg_count;
+	u16 esd_check_period;
+	uint8_t *reg_seq;
+	uint8_t *val_seq;
+	uint8_t reg_items;
+	uint8_t val_items;
+	uint32_t *val_len_array;
+	uint32_t total_esd_val_count;
+};
+
 struct panel_info {
 	/* common parameters */
 	struct device_node *of_node;
@@ -96,11 +110,9 @@ struct panel_info {
 	int cmds_len[CMD_CODE_MAX];
 
 	/* esd check parameters*/
-	bool esd_check_en;
-	u8 esd_check_mode;
-	u16 esd_check_period;
-	u32 esd_check_reg;
-	u32 esd_check_val;
+	struct panel_esd_config esd_conf;
+	bool bta_en;
+	u32 bta_check_reg;
 
 	/* MIPI DSI specific parameters */
 	u32 format;
@@ -123,7 +135,10 @@ struct sprd_panel {
 	struct backlight_device *oled_bdev;
 	struct regulator *supply;
 	struct delayed_work esd_work;
+	struct delayed_work esd_work_new;
 	bool esd_work_pending;
+	bool esd_work_new_pending;
+	bool esd_work_backup;
 	bool is_enabled;
 };
 

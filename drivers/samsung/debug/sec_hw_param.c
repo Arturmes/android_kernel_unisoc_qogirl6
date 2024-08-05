@@ -1459,7 +1459,7 @@ static int __init sec_hw_param_init(void)
 		return -ENODEV;
 	}
 
-	entry = proc_create("extra", S_IWUGO, NULL,
+	entry = proc_create("extra", S_IRUGO, NULL,
 			&sec_errp_extra_proc_fops);
 	if (unlikely(!entry))
 		err_errp_extra = -ENODEV;

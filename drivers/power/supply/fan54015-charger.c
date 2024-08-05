@@ -1028,11 +1028,6 @@ static int fan54015_charger_probe(struct i2c_client *client,
 		return -EINVAL;
 	}
 
-	if (!dev) {
-		pr_err("%s:line%d: NULL pointer!!!\n", __func__, __LINE__);
-		return -EINVAL;
-	}
-
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
 		dev_err(dev, "No support for SMBUS_BYTE_DATA\n");
 		return -ENODEV;

@@ -20,7 +20,6 @@
 #include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
-/* #include <linux/input/qpnp-power-on.h> */
 #include <linux/kernel_stat.h>
 #include <linux/module.h>
 #include <linux/nmi.h>
@@ -30,19 +29,8 @@
 #include <linux/reboot.h>
 #include <linux/regulator/consumer.h>
 #include <linux/seq_file.h>
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,4,0)
-#include <linux/memblock.h>
-#include <soc/qcom/qseecom_scm.h>
-#include <linux/qcom_scm.h>
-#else
 #include <linux/bootmem.h>
 #include <asm/compiler.h>
-#endif
-#include <linux/soc/qcom/smem.h>
-#if IS_ENABLED(CONFIG_QCOM_SOCINFO)
-#include <soc/qcom/restart.h> 
-#endif
 
 #include <asm/cacheflush.h>
 #include <asm/stacktrace.h>
@@ -89,56 +77,21 @@ uint64_t get_pa_dump_sink(void)
 }
 
 /* This is shared with msm-power off module. */
-void __iomem *restart_reason;
 static void __iomem *upload_cause;
-#if IS_ENABLED(CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE)
-static void __iomem *watchdog_base;
-#define WDT0_RST        0x04
-#define WDT0_EN         0x08
-#define WDT0_BITE_TIME  0x14
-#endif
-
-void (*sec_nvmem_pon_write)(u8 pon_rr) = NULL;
 
 DEFINE_PER_CPU(struct sec_debug_core_t, sec_debug_core_reg);
 DEFINE_PER_CPU(struct sec_debug_mmu_reg_t, sec_debug_mmu_reg);
 DEFINE_PER_CPU(enum sec_debug_upload_cause_t, sec_debug_upload_cause);
-#ifndef CONFIG_ARCH_SPRD
-static void sec_debug_set_qc_dload_magic(int on)
-{
-	pr_info("on=%d\n", on);
-	set_dload_mode(on);
-}
-#endif
+
 #define PON_RESTART_REASON_NOT_HANDLE	PON_RESTART_REASON_MAX
 #define RESTART_REASON_NOT_HANDLE	RESTART_REASON_END
 
-#ifdef CONFIG_ARCH_SPRD
-static enum sec_restart_reason_t __iomem *sprd_imem_base;
 static enum sec_restart_reason_t __iomem *sprd_restart_reason;
-#define IMEM_RESTART_REASON_OFFSET 0xFE0
-#define IMEM_UPLOAD_CAUSE_OFFSET 0xFE4
-#else
-/* This is shared with 'msm-poweroff.c'  module. */
-static enum sec_restart_reason_t __iomem *qcom_restart_reason;
-#endif
 
 static void sec_debug_set_upload_magic(unsigned int magic)
 {
-#ifdef CONFIG_ARCH_SPRD
-	__raw_writel(magic, sprd_restart_reason);
-#else
 	__pr_err("(%s) %x\n", __func__, magic);
-
-	if (magic != RESTART_REASON_NORMAL)
-		sec_debug_set_qc_dload_magic(1);
-	else
-		sec_debug_set_qc_dload_magic(0);
-
-	__raw_writel(magic, qcom_restart_reason);
-#endif
-	flush_cache_all();
-	outer_flush_all();
+	__raw_writel(magic, sprd_restart_reason);
 }
 
 static int sec_debug_normal_reboot_handler(struct notifier_block *nb,
@@ -149,29 +102,27 @@ static int sec_debug_normal_reboot_handler(struct notifier_block *nb,
 	char index_char[3];
 	unsigned int index;
 
-	set_dload_mode(0);	/* set defalut (not upload mode) */
-
 	sec_debug_set_upload_magic(RESTART_REASON_NORMAL);
 
 	if (unlikely(!data))
 		return 0;
 
-    printk("%s\n",__func__);
+	printk("%s\n",__func__);
 	printk("%px : %s\n", data, (char*)data);
 
 	if ((action == SYS_RESTART) &&
-		!strncmp((char *)data, "recovery", 8)) {
+			!strncmp((char *)data, "recovery", 8)) {
 		sec_get_param(param_index_reboot_recovery_cause,
-			      recovery_cause);
+				recovery_cause);
 		if (!recovery_cause[0] || !strlen(recovery_cause)) {
 			snprintf(recovery_cause, sizeof(recovery_cause),
-				 "%s:%d ", current->comm, task_pid_nr(current));
+					"%s:%d ", current->comm, task_pid_nr(current));
 			sec_set_param(param_index_reboot_recovery_cause,
-				      recovery_cause);
+					recovery_cause);
 		}
 	}
 	if ((action == SYS_RESTART) &&
-		!strncmp((char *)data, "param", 5)) {
+			!strncmp((char *)data, "param", 5)) {
 		ptr1 = strchr((char *)data, '_');
 		ptr1 = ptr1 + 1;
 		ptr2 = strchr((char *)ptr1, '_');
@@ -209,12 +160,7 @@ void sec_debug_update_dload_mode(const int restart_mode, const int in_panic)
 static inline void __sec_debug_set_restart_reason(
 				enum sec_restart_reason_t __r)
 {
-	printk("%s : %0x \n",__func__, (u32)__r);
-#ifdef CONFIG_ARCH_SPRD
 	__raw_writel((u32)__r, sprd_restart_reason);
-#else
-	__raw_writel((u32)__r, qcom_restart_reason);
-#endif
 }
 
 static enum pon_restart_reason __pon_restart_rory_start(
@@ -299,22 +245,6 @@ static inline void sec_debug_pm_restart(char *cmd)
 	flush_cache_all();
 	outer_flush_all();
 
-#if IS_ENABLED(CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE)
-	if (!sec_nvmem_pon_write && watchdog_base) {
-		pr_emerg("Causing a watchdog bite!\n");
-		__raw_writel(1, watchdog_base + WDT0_EN);
-		mb();
-		__raw_writel(1, watchdog_base + WDT0_BITE_TIME);
-		/* Mke sure bite time is written before we reset */
-		mb();
-		__raw_writel(1, watchdog_base + WDT0_RST);
-		/* Make sure we wait only after reset */
-		mb();
-
-		/* while (1) ; */
-		asm volatile ("b .");
-	}
-#endif
 	if (arm_pm_restart)
 		arm_pm_restart(REBOOT_COLD, cmd);
 	else
@@ -507,12 +437,6 @@ __next_cmd:
 	return;
 
 __done:
-	if (pon_rr != PON_RESTART_REASON_NOT_HANDLE) {
-		if (sec_nvmem_pon_write)
-			sec_nvmem_pon_write(pon_rr);
-		/* else
-			qpnp_pon_set_restart_reason(pon_rr); */
-	}
 	if (sec_rr != RESTART_REASON_NOT_HANDLE)
 		__sec_debug_set_restart_reason(sec_rr);
 	__pr_err("(%s) restart_reason = 0x%x(0x%x)\n",
@@ -529,7 +453,8 @@ void sec_debug_set_upload_cause(enum sec_debug_upload_cause_t type)
 		__raw_writel(type, upload_cause);
 		put_cpu();
 
-		pr_emerg("%s: %x\n",__func__, type);
+		if (type != UPLOAD_CAUSE_NON_SECURE_WDOG_BARK)
+			pr_emerg("%s: %x\n",__func__, type);
 	}
 }
 
@@ -547,7 +472,6 @@ enum sec_debug_upload_cause_t sec_debug_get_upload_cause(void)
 void sec_peripheral_secure_check_fail(void)
 {
 	if (!sec_debug_is_enabled()) {
-		sec_debug_set_qc_dload_magic(0);
 		sec_debug_pm_restart("peripheral_hw_reset");
 		/* never reach here */
 	}
@@ -558,7 +482,6 @@ void sec_peripheral_secure_check_fail(void)
 void sec_modem_loading_fail_to_bootloader(void)
 {
 	if (!sec_debug_is_enabled()) {
-		sec_debug_set_qc_dload_magic(0);
 		sec_debug_pm_restart("peripheral_hw_reset");
 		/* never reach here */
 	}
@@ -616,6 +539,7 @@ struct __upload_cause upload_cause_st[] = {
 	{ UPLOAD_MSG_PF_WD_KICK_FAIL, UPLOAD_CAUSE_PF_WD_KICK_FAIL, SEC_STRNCMP },
 	{ "taking too long", UPLOAD_CAUSE_SUBSYS_IF_TIMEOUT, SEC_STRNSTR },
 	{ "CP Crash", UPLOAD_CAUSE_CP_ERROR_FATAL, SEC_STRNCMP },
+	{ "cpcrash", UPLOAD_CAUSE_MODEM_RST_ERR, SEC_STRNSTR },
 	{ "adsp", UPLOAD_CAUSE_ADSP_ERROR_FATAL, SEC_STRNSTR },
 	{ "slpi", UPLOAD_CAUSE_SLPI_ERROR_FATAL, SEC_STRNSTR },
 	{ "spss", UPLOAD_CAUSE_SPSS_ERROR_FATAL, SEC_STRNSTR },
@@ -698,9 +622,6 @@ static int sec_debug_panic_handler(struct notifier_block *nb,
 #define MAX_STR_LEN 80
 	size_t len, i;
 
-#ifdef CONFIG_QCOM_WDT_CORE
-	emerg_pet_watchdog(); /* CTC-should be modify */
-#endif
 #ifdef CONFIG_SEC_USER_RESET_DEBUG
 	sec_debug_store_backtrace();
 #endif
@@ -774,47 +695,25 @@ static int __init __sec_debug_dt_addr_init(void)
 {
 	struct device_node *np;
 
-#ifdef CONFIG_ARCH_SPRD
 	np = of_find_compatible_node(NULL, NULL,
-			"unisoc,sprd-imem");
+			"unisoc,sprd-imem-restart_reason");
 	if (unlikely(!np)) {
 		pr_err("unable to find DT imem restart reason node\n");
 		return -ENODEV;
 	}
 
-	sprd_imem_base = of_iomap(np, 0);
-	if (unlikely(!sprd_imem_base)) {
-		pr_err("unable to map sprd imem base\n");
-		return -ENODEV;
-	}
-	sprd_restart_reason = (void __iomem*)(((unsigned long)sprd_imem_base + IMEM_RESTART_REASON_OFFSET));
-	upload_cause = (void __iomem*)(((unsigned long)sprd_imem_base + IMEM_UPLOAD_CAUSE_OFFSET));
-	pr_emerg(" sprd imem dt set!!!\n");
-
-#else
-	/* Using bottom of sec_dbg DDR address range
-	 * for writing restart reason
-	 */
-	np = of_find_compatible_node(NULL, NULL,
-			"qcom,msm-imem-restart_reason");
-	if (unlikely(!np)) {
-		pr_err("unable to find DT imem restart reason node\n");
-		return -ENODEV;
-	}
-
-	qcom_restart_reason = of_iomap(np, 0);
-	if (unlikely(!qcom_restart_reason)) {
+	sprd_restart_reason = of_iomap(np, 0);
+	if (unlikely(!sprd_restart_reason)) {
 		pr_err("unable to map imem restart reason offset\n");
 		return -ENODEV;
 	}
 
 	/* check restart_reason address here */
-	pr_emerg("restart_reason addr : 0x%p(0x%llx)\n",
-			qcom_restart_reason,
-			(unsigned long long)virt_to_phys(qcom_restart_reason));
+	pr_emerg("restart_reason addr : 0x%p(0x%llx)\n", sprd_restart_reason,
+			(unsigned long long)virt_to_phys(sprd_restart_reason));
 
-	/* Using bottom of sec_dbg DDR address range for writing upload_cause */
-	np = of_find_compatible_node(NULL, NULL, "qcom,msm-imem-upload_cause");
+	np = of_find_compatible_node(NULL, NULL,
+			"unisoc,sprd-imem-upload_cause");
 	if (unlikely(!np)) {
 		pr_err("unable to find DT imem upload cause node\n");
 		return -ENODEV;
@@ -830,26 +729,8 @@ static int __init __sec_debug_dt_addr_init(void)
 	pr_emerg("upload_cause addr : 0x%p(0x%llx)\n", upload_cause,
 			(unsigned long long)virt_to_phys(upload_cause));
 
-#if IS_ENABLED(CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE)
-	np = of_find_compatible_node(NULL, NULL, "qcom,msm-watchdog");
-	if (unlikely(!np)) {
-		pr_err("unable to find DT qcom,msm-watchdog node\n");
-		return -ENODEV;
-	}
+	pr_emerg(" sprd imem dt set!!!\n");
 
-	if (of_device_is_available(np)) {
-		watchdog_base = of_iomap(np, 0);
-		if (unlikely(!watchdog_base)) {
-			pr_err("unable to map watchdog_base offset\n");
-			return -ENODEV;
-		}
-
-		/* check upload_cause here */
-		pr_emerg("watchdog_base addr : 0x%p(0x%llx)\n", watchdog_base,
-				(unsigned long long)virt_to_phys(watchdog_base));
-	}
-#endif
-#endif
 	return 0;
 }
 #else /* CONFIG_OF */
@@ -892,11 +773,6 @@ static int __init sec_debug_init(void)
 	case ANDROID_DEBUG_LEVEL_LOW:
 #ifdef CONFIG_SEC_FACTORY
 	case ANDROID_DEBUG_LEVEL_MID:
-#endif
-
-#if defined(CONFIG_SEC_A52Q_PROJECT) || defined(CONFIG_SEC_A72Q_PROJECT)
-		if (!force_upload)
-			qcom_scm_disable_sdi();
 #endif
 		break;
 	}

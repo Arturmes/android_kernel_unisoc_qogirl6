@@ -38,6 +38,10 @@
 #include "../sysdump/sysdump64.h"
 #endif
 
+#if defined(CONFIG_SEC_DEBUG)
+#include <linux/sec_debug.h>
+#endif
+
 #undef pr_fmt
 #define pr_fmt(fmt) "sprd_wdh: " fmt
 
@@ -145,6 +149,10 @@ static void sprd_write_print_buf(char *source, int size)
 		log_buf_pos = log_buf_pos + size - SPRD_PRINT_BUF_LEN;
 		memcpy(sprd_log_buf, source, log_buf_pos);
 	}
+
+#if defined(CONFIG_SEC_DEBUG)
+	sec_log_buf_write(source, size);
+#endif
 #ifdef CONFIG_SPRD_HANG_DEBUG_UART
 	sprd_hangd_console_write(source, size);
 #endif
@@ -589,6 +597,9 @@ asmlinkage __visible void wdh_atf_entry(struct pt_regs *data)
 	cpu_regs_value_dump(cpu);
 	cpu_stack_data_dump(cpu);
 	sprd_unwind_backtrace_dump(cpu);
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+	sec_debug_store_extc_idx(false);
+#endif
 	gicc_regs_value_dump(cpu);
 
 	sprd_hang_debug_printf("cpu_state = 0x%04x\n", (unsigned int)cpu_state);
@@ -634,6 +645,10 @@ asmlinkage __visible void wdh_atf_entry(struct pt_regs *data)
 	sysdump_ipi(pregs);
 
 	mdelay(50);
+
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+	sec_debug_prepare_for_wdog_bark_reset();
+#endif
 
 	do_kernel_restart("panic");
 }

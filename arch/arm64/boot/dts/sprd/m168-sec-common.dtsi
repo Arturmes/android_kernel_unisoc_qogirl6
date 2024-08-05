@@ -16,19 +16,36 @@
 		qcom,disable_control_en = <1>;
 		qcom,unsupport_host_en = <0>;
 	};
+
+	sprd_imem: imem@177E0 {
+		compatible = "unisoc,sprd-imem";
+		reg = <0x177E0 0x20>;
+		ranges = <0x0 0x0 0x177E0 0x20>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		restart_reason@0 {
+			compatible = "unisoc,sprd-imem-restart_reason";
+			reg = <0x0 0x4>;
+		};
+		upload_cause@4 {
+			compatible = "unisoc,sprd-imem-upload_cause";
+			reg = <0x4 0x4>;
+		};
+	};
 };
 
 &reserved_memory {
 	/* CONFIG_SEC_DEBUG reserves 9MB */
-	sec_debug_region: sec_debug_region@90000000 {
+	sec_debug_region: sec_debug_region@8F000000 {
 		compatible = "removed-dma-pool";
 		no-map;
-		reg = <0x0 0x90000000 0x0 0x00900000>;
+		reg = <0x0 0x8F000000 0x0 0x00900000>;
 	};
 
-	ss_plog@90900000 {
+	ss_plog@8F900000 {
 		compatible = "ss_plog";
 		no-map;
-		reg = <0x0 0x90900000 0x0 0x00200000>;
+		reg = <0x0 0x8F900000 0x0 0x00200000>;
 	};
 };

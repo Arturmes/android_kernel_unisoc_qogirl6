@@ -1721,8 +1721,8 @@ static const struct regulator_ops bq25890_charger_vbus_ops = {
 };
 
 static const struct regulator_desc bq25890_charger_vbus_desc = {
-	.name = "otg-vbus",
-	.of_match = "otg-vbus",
+	.name = "bq25890_otg_vbus",
+	.of_match = "bq25890_otg_vbus",
 	.type = REGULATOR_VOLTAGE,
 	.owner = THIS_MODULE,
 	.ops = &bq25890_charger_vbus_ops,

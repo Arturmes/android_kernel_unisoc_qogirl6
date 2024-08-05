@@ -40,7 +40,6 @@
 #include <linux/cfp.h>
 #endif
 
-#include <linux/qseecom.h>
 #include "sec_debug_internal.h"
 
 static char rr_str[][3] = {
@@ -353,6 +352,7 @@ static int __init sec_debug_get_extra_info_region(void)
 }
 arch_initcall_sync(sec_debug_get_extra_info_region);
 
+#if 0
 static phys_addr_t sec_debug_rdx_bootdev_paddr;
 static u64 sec_debug_rdx_bootdev_size;
 static DEFINE_MUTEX(rdx_bootdev_mutex);
@@ -510,6 +510,7 @@ static int __init sec_debug_map_rdx_bootdev_region(void)
 	return 0;
 }
 arch_initcall_sync(sec_debug_map_rdx_bootdev_region);
+#endif
 
 struct debug_reset_header *get_debug_reset_header(void)
 {
@@ -1291,10 +1292,12 @@ static int __init sec_debug_reset_reason_init(void)
 	if (unlikely(!entry))
 		return -ENOMEM;
 
+#if 0
 	entry = proc_create("rdx_bootdev", 0444, NULL,
 			&sec_debug_rdx_bootdev_fops);
 	if (unlikely(!entry))
 		return -ENOMEM;
+#endif
 
 	dbg_partition_notifier_register(&sec_reset_reason_dbg_part_notifier);
 
@@ -1475,7 +1478,7 @@ void sec_debug_backtrace(void)
 			if (ret < 0)
 				break;
 
-			if (skip_callstack++ > 3) {
+			if (skip_callstack++ >= 0) {
 #if defined (CONFIG_CFP_ROPP) || defined(CONFIG_RKP_CFP_ROPP)
 				where = frame.pc;
 				if (where>>40 != 0xffffff)

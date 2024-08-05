@@ -128,6 +128,44 @@ hctosys_show(struct device *dev, struct device_attribute *attr, char *buf)
 static DEVICE_ATTR_RO(hctosys);
 
 static ssize_t
+power_on_alarm_store(struct device *dev, struct device_attribute *attr,
+	     const char *buf, size_t n)
+{
+	unsigned long val;
+	int retval;
+	struct rtc_wkalrm alm;
+	struct rtc_device *rtc = to_rtc_device(dev);
+
+	retval = kstrtoul(buf, 10, &val);
+	if (retval)
+		return retval;
+	retval = val / 1000000000000;
+	if (retval == 1) {
+		alm.enabled = 1;
+		val = val % 1000000000000;
+		alm.time.tm_year = (val / 100000000) - 1900;
+		val = val % 100000000;
+		alm.time.tm_mon = (val / 1000000) - 1;
+		val = val % 1000000;
+		alm.time.tm_mday = val / 10000;
+		val = val % 10000;
+		alm.time.tm_hour = val / 100;
+		alm.time.tm_min = val % 100;
+		pr_info("power_on_alarm, expires: %d-%d-%d %d:%d\n",
+			alm.time.tm_year + 1900, alm.time.tm_mon + 1, alm.time.tm_mday,
+			alm.time.tm_hour, alm.time.tm_min);
+		retval = rtc_set_alarm(rtc, &alm);
+	} else if (val == 0) {
+		pr_info("cancel the  power_on_alarm\n");
+		rtc_alarm_irq_enable(rtc, 0);
+	} else
+		pr_warn("The power_on_alarm parameter is wrong\n");
+
+	return (retval < 0) ? retval : n;
+}
+static DEVICE_ATTR_WO(power_on_alarm);
+
+static ssize_t
 wakealarm_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	ssize_t retval;
@@ -261,6 +299,7 @@ static struct attribute *rtc_attrs[] = {
 	&dev_attr_since_epoch.attr,
 	&dev_attr_max_user_freq.attr,
 	&dev_attr_hctosys.attr,
+	&dev_attr_power_on_alarm.attr,
 	&dev_attr_wakealarm.attr,
 	&dev_attr_offset.attr,
 	&dev_attr_range.attr,

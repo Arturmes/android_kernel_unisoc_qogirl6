@@ -151,15 +151,15 @@ int ftrace_make_nop(struct module *mod, struct dyn_ftrace *rec,
 	unsigned long pc = rec->ip;
 	bool validate = true;
 	u32 old = 0, new;
-	u32 replaced;
 	long offset = (long)pc - (long)addr;
 
 #ifdef CONFIG_CFI_CLANG
+	u32 mod_replaced;
 	/* workaround dynamic ftrace with clang's cfi */
 	if (unlikely(mod)) {
-		if (aarch64_insn_read((void *)pc, &replaced))
+		if (aarch64_insn_read((void *)pc, &mod_replaced))
 			return -EFAULT;
-		if (!aarch64_insn_is_bl(replaced) || !within_module(pc, mod))
+		if (!aarch64_insn_is_bl(mod_replaced) || !within_module(pc, mod))
 			return -EINVAL;
 		validate = false;
 	}
@@ -167,6 +167,8 @@ int ftrace_make_nop(struct module *mod, struct dyn_ftrace *rec,
 
 	if (offset < -SZ_128M || offset >= SZ_128M) {
 #ifdef CONFIG_ARM64_MODULE_PLTS
+		u32 replaced;
+
 		/*
 		 * 'mod' is only set at module load time, but if we end up
 		 * dealing with an out-of-range condition, we can assume it

@@ -16,6 +16,7 @@
 #endif
 #define pr_fmt(fmt) "sprd-iq: " fmt
 
+#include <linux/compat.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/wait.h>
@@ -380,6 +381,11 @@ static long iq_mem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
+static long iq_mem_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	return iq_mem_ioctl(filp, cmd, (unsigned long)compat_ptr(arg));
+}
+
 static unsigned int iq_mem_poll(struct file *filp,
 	struct poll_table_struct *wait)
 {
@@ -455,6 +461,7 @@ static const struct file_operations iq_mem_fops = {
 	.mmap  = iq_mem_nocache_mmap,
 	.open = iq_mem_open,
 	.release = iq_mem_release,
+	.compat_ioctl = iq_mem_compat_ioctl,
 };
 
 static struct miscdevice iq_mem_dev = {

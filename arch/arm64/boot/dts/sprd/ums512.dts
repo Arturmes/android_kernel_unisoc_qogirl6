@@ -19,6 +19,9 @@
 #include "ums512-modem.dtsi"
 #include "sprd-sound-fe-be.dtsi"
 #include "ums512-mach.dtsi"
+#if __has_include ("audio/extra_sound_card_component.dtsi")
+#include "audio/extra_sound_card_component.dtsi"
+#endif
 
 /*
 Tips:

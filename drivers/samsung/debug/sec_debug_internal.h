@@ -77,13 +77,6 @@ static inline void sec_log_buf_pull_early_buffer(bool *init_done) {}
 
 /* out-of-sec_debug */
 
-/* drivers/power/reset/msm-poweroff.c */
-#ifdef CONFIG_POWER_RESET_MSM
-extern void set_dload_mode(int on);
-#else
-static inline void set_dload_mode(int on) {}
-#endif
-
 /* kernel/init/version.c */
 #include <linux/utsname.h>
 extern struct uts_namespace init_uts_ns;
@@ -91,15 +84,8 @@ extern struct uts_namespace init_uts_ns;
 /* drivers/base/core.c */
 extern struct kset *devices_kset;
 
-/* implemented @ drivers/soc/qcom/watchdog_v2.c */
-extern void force_watchdog_bark(void);
-
-/* implemented @ drivers/input/misc/qpnp-power-on.c */
-#ifdef CONFIG_INPUT_QPNP_POWER_ON
-int qpnp_control_s2_reset_onoff(int on);
-#else
-static inline int qpnp_control_s2_reset_onoff(int on) { return 0; };
-#endif
+/* implemented @ drivers/soc/sprd/sprd_7sreset.c */
+int sprd_7sreset_onoff(int onoff);
 
 /* fake pr_xxx macros to prevent checkpatch fails */
 #define __printx	printk

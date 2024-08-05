@@ -109,6 +109,8 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_VOLTAGE_BOOT,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_BATT_CURRENT_UA_NOW,
+	POWER_SUPPLY_PROP_BATT_HV_CHARGER_STATUS,
 	POWER_SUPPLY_PROP_CURRENT_AVG,
 	POWER_SUPPLY_PROP_CURRENT_BOOT,
 	POWER_SUPPLY_PROP_POWER_NOW,
@@ -161,6 +163,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_USB_HC,
 	POWER_SUPPLY_PROP_USB_OTG,
 	POWER_SUPPLY_PROP_CHARGE_ENABLED,
+	POWER_SUPPLY_PROP_BATT_SLATE_MODE,
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
 	/* Properties of type `const char *' */
@@ -418,7 +421,7 @@ struct power_supply_battery_info {
 	int cap_table_size;
 	int resistance_table_size;
 	struct power_supply_charge_current cur;
-	int cp_ocv_threshold;
+	int fchg_ocv_threshold;
 };
 
 extern struct atomic_notifier_head power_supply_notifier;

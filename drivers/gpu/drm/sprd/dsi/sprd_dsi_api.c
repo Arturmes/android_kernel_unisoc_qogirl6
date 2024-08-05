@@ -461,6 +461,7 @@ int sprd_dsi_wr_pkt(struct sprd_dsi *dsi, u8 vc, u8 type,
  * (waiting for command buffer, and waiting for receiving)
  * @note this function will enable BTA
  */
+extern const char *lcd_name;
 int sprd_dsi_rd_pkt(struct sprd_dsi *dsi, u8 vc, u8 type,
 			u8 msb_byte, u8 lsb_byte,
 			u8 *buffer, u8 bytes_to_read)
@@ -483,7 +484,9 @@ int sprd_dsi_rd_pkt(struct sprd_dsi *dsi, u8 vc, u8 type,
 
 	/* 3rd: get data from rx payload fifo */
 	if (dsi_hal_is_rx_payload_fifo_empty(dsi)) {
-		pr_err("rx payload fifo empty\n");
+		/*reason: gc7202 add bta, this err log will print every time*/
+		if (strncmp("lcd_gc7202_hlt_mipi_hdp", lcd_name, 28) != 0)
+			pr_err("rx payload fifo empty\n");
 		return -EINVAL;
 	}
 

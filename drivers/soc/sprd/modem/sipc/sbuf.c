@@ -44,6 +44,8 @@
 #define VOLA_SBUF_SMEM volatile struct sbuf_smem_header
 #define VOLA_SBUF_RING volatile struct sbuf_ring_header
 
+extern ushort debug_enable;
+
 struct name_node {
 	struct list_head list;
 	char comm[TASK_COMM_LEN];
@@ -574,7 +576,7 @@ int sbuf_write(u8 dst, u8 channel, u32 bufid,
 		return -ENODEV;
 	}
 
-	pr_debug("sbuf_write: dst=%d, channel=%d, bufid=%d, len=%d, timeout=%d\n",
+	pr_info("sbuf_write: dst=%d, channel=%d, bufid=%d, len=%d, timeout=%d\n",
 		 dst,
 		 channel,
 		 bufid,
@@ -674,10 +676,6 @@ int sbuf_write(u8 dst, u8 channel, u32 bufid,
 					rval = -EFAULT;
 					break;
 				}
-				print_hex_dump(KERN_INFO, "mif: TX1: ",
-						DUMP_PREFIX_NONE, 32, 1, txpos, txsize - tail < 32 ? txsize - tail : 32, 0);
-				print_hex_dump(KERN_INFO, "mif: TX2: ",
-						DUMP_PREFIX_NONE, 32, 1, ring->txbuf_virt, tail < 32 ? tail : 32, 0);
 			}
 		} else {
 			if (!access_ok(VERIFY_READ, u_buf.buf, txsize)) {
@@ -692,8 +690,6 @@ int sbuf_write(u8 dst, u8 channel, u32 bufid,
 					rval = -EFAULT;
 					break;
 				}
-				print_hex_dump(KERN_INFO, "mif: TX : ",
-						DUMP_PREFIX_NONE, 32, 1, ring->txbuf_virt, txsize < 32 ? txsize : 32, 0);
 			}
 		}
 
@@ -743,6 +739,7 @@ int sbuf_read(u8 dst, u8 channel, u32 bufid,
 	int rval, left, tail, rxsize;
 	u8 ch_index;
 	union sbuf_buf u_buf;
+	char crash_reason[ASSERT_INFO_LENGTH] = {0, };
 
 	u_buf.buf = buf;
 	ch_index = sipc_channel2index(channel);
@@ -866,10 +863,6 @@ int sbuf_read(u8 dst, u8 channel, u32 bufid,
 					rval = -EFAULT;
 					break;
 				}
-				print_hex_dump(KERN_INFO, "mif: RX1: ",
-						DUMP_PREFIX_NONE, 32, 1, rxpos, rxsize - tail < 32 ? rxsize - tail : 32, 0);
-				print_hex_dump(KERN_INFO, "mif: RX2: ",
-						DUMP_PREFIX_NONE, 32, 1, ring->rxbuf_virt, tail < 32 ? tail : 32, 0);
 			}
 		} else {
 			if (!access_ok(VERIFY_WRITE, u_buf.buf, rxsize)) {
@@ -882,8 +875,6 @@ int sbuf_read(u8 dst, u8 channel, u32 bufid,
 					rval = -EFAULT;
 					break;
 				}
-				print_hex_dump(KERN_INFO, "mif: RX : ",
-						DUMP_PREFIX_NONE, 32, 1, rxpos, rxsize < 32 ? rxsize : 32, 0);
 			}
 		}
 
@@ -911,7 +902,15 @@ int sbuf_read(u8 dst, u8 channel, u32 bufid,
 
 	mutex_unlock(&ring->rxlock);
 
-	pr_info("sbuf_read done: channel=%d, len=%d", channel, len - left);
+	pr_debug("sbuf_read done: channel=%d, len=%d", channel, len - left);
+
+	/* /dev/spipe_lte2(channel=4, bufid=2) is a device node used only to get cp crash. */
+	if (debug_enable && dst == SIPC_ID_PSCP && channel == SMSG_CH_PIPE && bufid == 2) {
+		if (unalign_copy_from_user(crash_reason, buf, rxsize))
+			pr_err("sbuf_read: failed to copy from user! (cp crash reason)\n");
+		if (strncmp(crash_reason, "Modem Reset", sizeof("Modem Reset")))
+			panic("cpcrash: %s", crash_reason);
+	}
 
 	if (len == left)
 		return rval;

@@ -252,7 +252,11 @@ static int sprd_headset_power_init(struct sprd_headset *hdst)
 		power->head_mic = 0;
 		return ret;
 	}
-	regulator_set_voltage(power->head_mic, 950000, 950000);
+	ret = regulator_set_voltage(power->head_mic, 950000, 950000);
+	if (ret < 0) {
+		pr_info("Failed(%d) to set headset power supply voltage at 950000uV\n",
+		       ret);
+	}
 
 	ret = sprd_headset_power_get(dev, &power->bg, "BG");
 	if (ret) {
@@ -873,11 +877,16 @@ static int headset_adc_cond(struct sprd_headset *hdst, int gpio_num,
 	bool cond;
 	int gpio_status = 0;
 	int button_alert = 0;
+	int ret = 0;
 
 	if (hdst->type_status == HEADSET_TYPEC_IN) {
 		cond = !hdst->typec_attached;
 		if (gpio_num == pdata->gpios[HDST_GPIO_BUTTON]) {
-			headset_reg_read(ANA_STS0, &button_alert);
+			ret = headset_reg_read(ANA_STS0, &button_alert);
+			if (ret < 0) {
+				pr_info("%s read reg ANA_STS0 failed %d\n", __func__,
+					ret);
+			}
 			gpio_status = (gpio_get_value(gpio_num) != gpio_value);
 			cond = cond || gpio_status;
 		}
@@ -1072,13 +1081,14 @@ static int headset_button_valid(void)
 	struct sprd_headset_platform_data *pdata = (hdst ? &hdst->pdata : NULL);
 	int button_is_valid = 0;
 	int gpio_detect_value_current;
+	int gpio_lr = (pdata ? pdata->gpios[HDST_GPIO_TYPEC_LR] : -1);
 
 	if (!hdst) {
 		pr_err("%s: sprd_hdset is NULL!\n", __func__);
 		return -1;
 	}
 
-	if (pdata->gpios[HDST_GPIO_TYPEC_LR] >= 0 &&
+	if (gpio_lr >= 0 &&
 			hdst->type_status == HEADSET_TYPEC_IN)
 		return hdst->typec_attached;
 
@@ -1219,7 +1229,7 @@ static int headset_get_adc_value(struct iio_channel *chan)
 static enum sprd_headset_type headset_typec_type_detect(int gpio_det_val_last)
 {
 	struct sprd_headset *hdst = sprd_hdst;
-	struct iio_channel *chan = hdst->adc_chan;
+	struct iio_channel *chan = (hdst ? hdst->adc_chan : NULL);
 	struct sprd_headset_platform_data *pdata = (hdst ? &hdst->pdata : NULL);
 	int gpio_switch = pdata->gpios[HDST_GPIO_SW];
 	int adc_mic[2];
@@ -1287,6 +1297,7 @@ static enum sprd_headset_type headset_typec_type_detect(int gpio_det_val_last)
 			pr_err("get adc_mic[1] = %d error\n", adc_mic[1]);
 			return -EINVAL;
 		}
+		invalid_count++;
 	} while (adc_mic[1] > INVALID_VOL && invalid_count < INVALID_TRY_COUNT);
 
 	if (invalid_count == 10) {
@@ -1508,6 +1519,21 @@ static enum snd_jack_types headset_adc_to_button(int adc_mic)
 	return j_type;
 }
 
+static void headset_det_disbutton_work_func(struct work_struct *work)
+{
+        struct sprd_headset *hdst = sprd_hdst;
+        struct sprd_headset_platform_data *pdata = (hdst ? &hdst->pdata : NULL);
+
+disbutton_retry:
+        if (gpio_get_value(pdata->gpios[HDST_GPIO_DET_MIC])) {
+                msleep(5);
+                goto disbutton_retry;
+        }
+
+        hdst->disable_button = true;
+
+}
+
 static void headset_button_work_func(struct work_struct *work)
 {
 	struct sprd_headset *hdst = sprd_hdst;
@@ -1555,6 +1581,11 @@ static void headset_button_work_func(struct work_struct *work)
 			if (adc_ideal >= 0)
 				adc_mic_average = adc_ideal;
 			pr_info("adc_mic_average = %d\n", adc_mic_average);
+			if (hdst->disable_button && (headset_adc_to_button(adc_mic_average) == SND_JACK_BTN_0)) {
+				pr_info("%s: disable media button", __func__);
+				hdst->disable_button = false;
+				goto out;
+			}
 			hdst->btns_pressed |=
 				headset_adc_to_button(adc_mic_average);
 		}
@@ -1637,6 +1668,10 @@ static void headset_process_for_4pole(enum sprd_headset_type headset_type)
 			hdst->hdst_status, SND_JACK_HEADSET);
 	}
 	hdst->report = 1;
+
+        queue_delayed_work(hdst->det_disbutton_work_q, &hdst->det_disbutton_work,
+                msecs_to_jiffies(10));
+
 	pr_info("headset plug in (headset_detect_work_func)\n");
 }
 
@@ -1719,8 +1754,8 @@ static void headset_detect_all_work_func(struct work_struct *work)
 	struct sprd_headset_platform_data *pdata = (hdst ? &hdst->pdata : NULL);
 	struct sprd_headset_power *power = (hdst ? &hdst->power : NULL);
 	enum sprd_headset_type headset_type;
-	int gpio_switch = pdata->gpios[HDST_GPIO_SW];
-	int gpio_lr = pdata->gpios[HDST_GPIO_TYPEC_LR];
+	int gpio_switch = (pdata ? pdata->gpios[HDST_GPIO_SW] : -1);
+	int gpio_lr = (pdata ? pdata->gpios[HDST_GPIO_TYPEC_LR] : -1);
 	int plug_state_current = 0;
 	int gpio_detect_value_current = 0;
 	int gpio_detect_value = 0;
@@ -1844,8 +1879,17 @@ static void headset_detect_all_work_func(struct work_struct *work)
 			pr_info("headset_type = %d (HEADSET_NO_MIC)\n",
 				headset_type);
 			if (times_1 < 3) {
-				queue_delayed_work(hdst->det_all_work_q,
-				  &hdst->det_all_work, msecs_to_jiffies(1000));
+				//added begin by wenhuilong for P211014-01832 music pause if headphones plug in slowly
+				if(times_1 < 1){
+					queue_delayed_work(hdst->det_all_work_q,
+					  &hdst->det_all_work, msecs_to_jiffies(500)); // delay time for first re_detect
+					pr_info("delay 500 re_detect\n");
+				} else {
+					queue_delayed_work(hdst->det_all_work_q,
+					  &hdst->det_all_work, msecs_to_jiffies(1000));
+					pr_info("delay 100 re_detect\n");
+				}
+				//added end by wenhuilong for P211014-01832 music pause if headphones plug in slowly
 				times_1++;
 				hdst->re_detect = true;
 			} else {
@@ -1880,7 +1924,12 @@ static void headset_detect_all_work_func(struct work_struct *work)
 		if (hdst->headphone) {
 			headset_button_irq_threshold(0);
 			headset_irq_button_enable(0, hdst->irq_button);
-
+			//added begin by wenhuilong for P211014-01832 music pause if headphones plug in slowly
+			if (times_1 <= 1 && hdst->re_detect == true) {
+				pr_info("delay report for 3p\n");
+				goto out;
+			}
+			//added end by wenhuilong for P211014-01832 music pause if headphones plug in slowly
 			hdst->hdst_status = SND_JACK_HEADPHONE;
 			if (hdst->report == 0) {
 				pr_debug("report for 3p\n");
@@ -1914,6 +1963,7 @@ static void headset_detect_all_work_func(struct work_struct *work)
 		hdst->plug_stat_last = 0;
 		hdst->report = 0;
 		hdst->re_detect = false;
+		hdst->disable_button = false;
 
 		/* pull gpio switch to 0 force. */
 		if (hdst->type_status == HEADSET_TYPEC_OUT) {
@@ -2083,6 +2133,12 @@ static irqreturn_t headset_button_irq_handler(int irq, void *dev)
 		pr_err("%s: sprd_hdset is NULL!\n", __func__);
 		return IRQ_HANDLED;
 	}
+
+        if (0 && hdst->disable_button) {
+                pr_info("disable_button");
+                hdst->disable_button = false;
+                return IRQ_HANDLED;
+        }
 
 	if (headset_button_valid() == 0) {
 		headset_reg_read(ANA_STS0, &val);
@@ -2271,6 +2327,45 @@ static ssize_t headset_debug_level_show(struct kobject *kobj,
 	return sprintf(buff, "%d\n", hdst->debug_level);
 }
 
+//added begin for KSG_M168_A01-2985 adding node /sys/class/audio/earjack/state 20210930
+ssize_t headset_state_A03core_show(struct device *kobj,
+	struct device_attribute *attr, char *buff)
+{
+	//struct sprd_headset *hdst = sprd_hdst;
+	int type = 0;
+
+	/*switch (hdst->hdst_status) {
+	case SND_JACK_HEADSET:
+		type = 1;
+		break;
+	case SND_JACK_HEADPHONE:
+		type = 2;
+		break;
+	default:
+		type = 0;
+		break;
+	}
+
+	if (hdst->type_status == HEADSET_TYPEC_IN)
+		type = 3;
+
+	pr_debug("%s status: %#x, headset_state %d, type_status %d\n",
+		__func__, hdst->hdst_status, type, hdst->type_status);*/
+
+	type = 1;	//modified for KSG_M168_A01-2985 SS just need 3.5mm earjack is supported or not 202011009
+
+	return sprintf(buff, "%d\n", type);
+}
+EXPORT_SYMBOL(headset_state_A03core_show);
+
+ssize_t headset_state_A03core_store(struct device *kobj,
+	struct device_attribute *attr, const char *buff, size_t len)
+{
+	return len;
+}
+EXPORT_SYMBOL(headset_state_A03core_store);
+//added end for KSG_M168_A01-2985 adding node /sys/class/audio/earjack/state 20210930
+
 static ssize_t headset_debug_level_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buff, size_t len)
 {
@@ -2375,7 +2470,7 @@ static int headset_typec_notifier(struct notifier_block *nb,
 	struct sprd_headset *hdst = container_of(nb, struct sprd_headset, typec_plug_nb);
 	struct sprd_headset_platform_data *pdata = &hdst->pdata;
 	int gpio_lr = pdata->gpios[HDST_GPIO_TYPEC_LR];
-	unsigned int val;
+	unsigned int val = 0;
 	bool attached = false;
 	int level = 0;
 	int ret;
@@ -2427,7 +2522,11 @@ static int headset_typec_notifier(struct notifier_block *nb,
 	queue_delayed_work(hdst->det_all_work_q,
 		&hdst->det_all_work, msecs_to_jiffies(5));
 
-	headset_reg_read(ANA_STS0, &val);
+	ret = headset_reg_read(ANA_STS0, &val);
+	if (ret < 0) {
+		pr_info("%s read reg ANA_STS0 failed %d\n", __func__,
+			ret);
+	}
 	pr_info("%s out, ANA_STS0 = 0x%08X OUT, ret %d, type_status %d\n", __func__, val, ret, hdst->type_status);
 
 	return NOTIFY_OK;
@@ -2561,6 +2660,7 @@ int sprd_headset_soc_probe(struct snd_soc_codec *codec)
 	}
 
 	hdst->codec = codec;
+        hdst->disable_button = false;
 
 	adie_chip_id = sci_get_ana_chip_id();
 	pr_info("adie chip is 0x%x, 0x%x\n", (adie_chip_id >> 16) & 0xFFFF,
@@ -2664,6 +2764,14 @@ int sprd_headset_soc_probe(struct snd_soc_codec *codec)
 		goto failed_to_headset_lineout;
 	}
 
+        INIT_DELAYED_WORK(&hdst->det_disbutton_work, headset_det_disbutton_work_func);
+        hdst->det_disbutton_work_q =
+                create_singlethread_workqueue("headset_det_disbutton_work");
+        if (hdst->det_disbutton_work_q == NULL) {
+                pr_err("create_singlethread_workqueue for headset_lineout failed!\n");
+                goto failed_to_headset_det_disbutton;
+        }
+
 	wakeup_source_init(&hdst->det_all_wakelock, "headset_detect_wakelock");
 	wakeup_source_init(&hdst->btn_wakelock, "headset_button_wakelock");
 
@@ -2761,6 +2869,8 @@ failed_to_request_detect_mic_irq:
 	devm_free_irq(dev, hdst->irq_detect_all, hdst);
 failed_to_request_detect_irq:
 	devm_free_irq(dev, hdst->irq_button, hdst);
+failed_to_headset_det_disbutton:
+        destroy_workqueue(hdst->det_disbutton_work_q);
 failed_to_headset_lineout:
 	destroy_workqueue(hdst->lineout_work_q);
 failed_to_request_irq:
@@ -2795,7 +2905,7 @@ static int sprd_headset_parse_dt(struct sprd_headset *hdst)
 	struct sprd_headset_platform_data *pdata;
 	struct device_node *np, *buttons_np = NULL;
 	struct headset_buttons *buttons_data;
-	struct device *dev = &hdst->pdev->dev;
+	struct device *dev = (hdst ? &hdst->pdev->dev : NULL);
 	u32 val = 0;
 	int index;
 	int i = 0;

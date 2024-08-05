@@ -3256,6 +3256,10 @@ unsigned int mmc_calc_max_discard(struct mmc_card *card)
 	struct mmc_host *host = card->host;
 	unsigned int max_discard, max_trim;
 
+	if (!host->max_busy_timeout ||
+			(host->caps2 & MMC_CAP2_MAX_DISCARD_SIZE))
+		return UINT_MAX;
+
 	/*
 	 * Without erase_group_def set, MMC erase timeout depends on clock
 	 * frequence which can change.  In that case, the best choice is
@@ -3275,6 +3279,7 @@ unsigned int mmc_calc_max_discard(struct mmc_card *card)
 	pr_debug("%s: calculated max. discard sectors %u for timeout %u ms\n",
 		mmc_hostname(host), max_discard, host->max_busy_timeout ?
 		host->max_busy_timeout : MMC_ERASE_TIMEOUT_MS);
+
 	return max_discard;
 }
 EXPORT_SYMBOL(mmc_calc_max_discard);
@@ -3417,6 +3422,7 @@ int _mmc_detect_card_removed(struct mmc_host *host)
 	if (ret) {
 		mmc_card_set_removed(host->card);
 		pr_debug("%s: card remove detected\n", mmc_hostname(host));
+		ST_LOG("<%s> %s: card remove detected\n", __func__, mmc_hostname(host));
 	}
 
 	return ret;

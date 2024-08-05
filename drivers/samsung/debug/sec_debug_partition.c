@@ -44,15 +44,7 @@ static ap_health_t ap_health_data;
 static DEFINE_MUTEX(ap_health_work_lock);
 static DEFINE_MUTEX(debug_partition_mutex);
 static BLOCKING_NOTIFIER_HEAD(dbg_partition_notifier_list);
-static char debugpartition_path[60];
-
-static int __init get_bootdevice(char *str)
-{
-	snprintf(debugpartition_path, sizeof(debugpartition_path),
-		"/dev/block/by-name/%s", str);
-	return 0;
-}
-early_param("androidboot.bootdevice", get_bootdevice);
+static char debugpartition_path[] = "/dev/block/by-name/debug";
 
 static void debug_partition_operation(struct work_struct *work)
 {

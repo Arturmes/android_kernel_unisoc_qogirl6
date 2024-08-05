@@ -71,7 +71,12 @@ int analyse_separate(char *str, char str_array[][MAX_SIZE], char *needle)
 	strncpy(pchar, str, MAX_STR_LEN - 1);
 	buf = strstr(pchar, needle);
 
-	while (NULL != buf) {
+/*
+*Modified for code scaning. SI-23356[ANDROID][A3CORE] Out-of-bounds write in functions calling analyse_separate() due to no input validation.
+*Jira:KSG_M168_A01-2995
+*	while (NULL != buf) {
+*/
+	while ((NULL != buf) && (i < MAX_SIZE)) {
 		buf[0] = '\0';
 		strncpy(str_array[i], pchar, MAX_SIZE - 1);
 		i++;

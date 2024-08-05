@@ -22,6 +22,8 @@
 #include "sprd_dsi.h"
 #include "sysfs_display.h"
 
+extern const char *lcd_name;
+
 static int hop_freq;
 static int ssc_en;
 static int ulps_en;
@@ -49,11 +51,21 @@ static ssize_t reg_read_store(struct device *dev,
 		return -ENXIO;
 	}
 
-	str_to_u32_array(buf, 0, input_param);
+/*
+* Modify for Bug 1723972 - SI-23255: Stack buffer overflow in str_to_u32_array function, used in few store system calls.
+* Jira:KSG_M168_A01-2995
+*	str_to_u32_array(buf, 0, input_param);
+*/
+	str_to_u32_array(buf, 0, input_param, 64);
 
 	reg_stride = regmap_get_reg_stride(regmap);
 
-	for (i = 0; i < (input_param[1] ? : 1); i++) {
+/*
+* Modify for Bug 1727685 - SI-23336.
+* Jira:KSG_M168_A01-2995
+*	for (i = 0; i < (input_param[1] ? : 1); i++) {
+*/
+	for (i = 0; i < (input_param[1] < 64 ? input_param[1] : 64); i++) {
 		reg = input_param[0] + i * reg_stride;
 		regmap_read(regmap, reg, &read_buf[i]);
 	}
@@ -96,7 +108,12 @@ static ssize_t reg_read_show(struct device *dev,
 	} else
 		return -ENODEV;
 
-	for (i = 0; i < (input_param[1] ? : 1); i++)
+/*
+* Modify for Bug 1727685 - SI-23336.
+* Jira:KSG_M168_A01-2995
+*	for (i = 0; i < (input_param[1] ? : 1); i++)
+*/
+	for (i = 0; i < (input_param[1] < 64 ? input_param[1] : 64); i++)
 		ret += snprintf(buf + ret, PAGE_SIZE, fmt,
 				input_param[0] + i * reg_stride,
 				read_buf[i]);
@@ -126,13 +143,31 @@ static ssize_t reg_write_store(struct device *dev,
 		return -ENXIO;
 	}
 
-	len = str_to_u32_array(buf, 16, input_param);
+/*
+* Modify for Bug 1723972 - SI-23255: Stack buffer overflow in str_to_u32_array function, used in few store system calls.
+* Jira:KSG_M168_A01-2995
+*	len = str_to_u32_array(buf, 16, input_param);
+*/
+	len = str_to_u32_array(buf, 16, input_param, 64);
 
 	reg_stride = regmap_get_reg_stride(regmap);
+/*
+* Modify for Bug 1727685 - SI-23336.
+* Jira:KSG_M168_A01-2995
+*/
+	for (i = 1; i < len; i++) {
+		val = input_param[i];
+
+		if (reg_stride == 8) {
+			if (val >> 8)
+				pr_err("input param over regmap stride limit\n");
+                }
+	}
 
 	for (i = 0; i < len - 1; i++) {
 		reg = input_param[0] + i * reg_stride;
 		val = input_param[1 + i];
+
 		regmap_write(regmap, reg, val);
 	}
 	mutex_unlock(&dphy->ctx.lock);
@@ -171,7 +206,12 @@ static ssize_t ssc_store(struct device *dev,
 		pr_err("Invalid input value\n");
 		return -EINVAL;
 	}
-
+	if (strncmp("lcd_gc7202_hlt_mipi_hdp", lcd_name, 28) == 0) {
+		pr_err("lcd_gc7202_hlt_mipi_hdp close SSC!!!\n");
+		ssc_en = false;
+		mutex_unlock(&dphy->ctx.lock);
+		return count;
+	}
 	sprd_dphy_ssc_en(dphy, ssc_en);
 	mutex_unlock(&dphy->ctx.lock);
 

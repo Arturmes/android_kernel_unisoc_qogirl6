@@ -422,6 +422,9 @@ void irq_exit(void)
 	tick_irq_exit();
 	rcu_irq_exit();
 	trace_hardirq_exit(); /* must be last! */
+#if IS_ENABLED(CONFIG_SEC_DEBUG_MSG_LOG)
+	sec_debug_msg_log("hardirq exit");
+#endif
 }
 
 /*
@@ -521,7 +524,14 @@ static __latent_entropy void tasklet_action(struct softirq_action *a)
 				if (!test_and_clear_bit(TASKLET_STATE_SCHED,
 							&t->state))
 					BUG();
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SCHED_LOG)
+				sec_debug_irq_sched_log(-1, t->func, "tasket_action", SOFTIRQ_ENTRY);
+#endif
 				t->func(t->data);
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SCHED_LOG)
+				sec_debug_irq_sched_log(-1, t->func, "tasket_action", SOFTIRQ_EXIT);
+#endif
+
 				tasklet_unlock(t);
 				continue;
 			}

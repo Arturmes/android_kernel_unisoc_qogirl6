@@ -1312,6 +1312,12 @@ struct f2fs_io_info {
 	unsigned char version;		/* version of the node */
 };
 
+/*                                                 
+ * A flag temporarily used to bypass dm-default-key
+ * This flag should be cleared before submit_bio.  
+ */                                                
+#define F2FS_REQ_DEFKEY_BYPASS REQ_BYPASS          
+
 struct bio_entry {
 	struct bio *bio;
 	struct list_head list;

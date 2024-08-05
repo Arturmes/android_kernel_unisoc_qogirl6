@@ -318,46 +318,107 @@ static struct sprd_asoc_ext_hook_map ext_hook_arr_fsm[] = {
 
 #endif
 
-static void hook_gpio_pulse_control(unsigned int gpio, unsigned int mode)
+static void hook_gpio_default_pulse_control(unsigned int gpio,
+					    unsigned int mode)
 {
 	int i = 1;
 	spinlock_t *lock = &hook_spk_priv.lock;
 	unsigned long flags;
-	unsigned int delay_us, mode_local;
 
-	pr_info("gpio %d, mode %d, ext_spk_pa_type %s\n", gpio, mode,
-		ext_spk_pa_type ? "EXT_DEFAULT_PA" : "EXT_FSM_PA");
+	pr_info("%s gpio %d, mode %d\n", __func__, gpio, mode);
 	spin_lock_irqsave(lock, flags);
-	if (ext_spk_pa_type == EXT_FSM_PA) {
-		gpio_set_value(gpio, !EN_LEVEL);
-		udelay(400);
+	for (i = 1; i < mode; i++) {
 		gpio_set_value(gpio, EN_LEVEL);
-		udelay(300);
+		udelay(2);
 		gpio_set_value(gpio, !EN_LEVEL);
-		udelay(10);
-		mode_local = mode - 1;
-		delay_us = 10;
-	} else {
-		mode_local = mode;
-		delay_us = 2;
-	}
-
-	for (i = 1; i < mode_local; i++) {
-		gpio_set_value(gpio, EN_LEVEL);
-		udelay(delay_us);
-		gpio_set_value(gpio, !EN_LEVEL);
-		udelay(delay_us);
+		udelay(2);
 	}
 
 	gpio_set_value(gpio, EN_LEVEL);
 	spin_unlock_irqrestore(lock, flags);
-	if (ext_spk_pa_type == EXT_FSM_PA)
-		udelay(300);
+}
+
+static void hook_gpio_fsm_pulse_control(unsigned int gpio, unsigned int mode)
+{
+	int i = 1;
+	spinlock_t *lock = &hook_spk_priv.lock;
+	unsigned long flags;
+
+	pr_info("%s gpio %d, mode %d\n", __func__, gpio, mode);
+	spin_lock_irqsave(lock, flags);
+	gpio_set_value(gpio, !EN_LEVEL);
+	udelay(400);
+	gpio_set_value(gpio, EN_LEVEL);
+	udelay(300);
+	gpio_set_value(gpio, !EN_LEVEL);
+	udelay(10);
+
+	for (i = 1; i < mode - 1; i++) {
+		gpio_set_value(gpio, EN_LEVEL);
+		udelay(10);
+		gpio_set_value(gpio, !EN_LEVEL);
+		udelay(10);
+	}
+
+	gpio_set_value(gpio, EN_LEVEL);
+	spin_unlock_irqrestore(lock, flags);
+	udelay(300);
+}
+
+static void ext_default_spk_pa(int gpio, int id, int on)
+{
+	int mode = hook_spk_priv.priv_data[id];
+
+	if (mode > GENERAL_SPK_MODE)
+		mode = 0;
+
+	pr_info("%s id: %d, gpio: %d, mode: %d, on: %d, select_mode %d\n",
+		__func__, id, gpio, mode, on, select_mode);
+
+	/* Off */
+	if (!on) {
+		gpio_set_value(gpio, !EN_LEVEL);
+		return;
+	}
+
+	/* On */
+	if (select_mode) {
+		mode = select_mode;
+	}
+
+	hook_gpio_default_pulse_control(gpio, mode);
+
+	/* When the first time open speaker path and play a very short sound,
+	 * the sound can't be heard. So add a delay here to make sure the AMP
+	 * is ready.
+	 */
+	msleep(22);
+}
+
+static void ext_fsm_spk_pa(int gpio, int id, int on)
+{
+	int mode = FSM_SPK_DEFAULT_MODE;
+
+	pr_info("%s id: %d, gpio: %d, mode: %d, on: %d, select_mode %d\n",
+		__func__, id, gpio, mode, on, select_mode);
+
+	/* Off */
+	if (!on) {
+		gpio_set_value(gpio, !EN_LEVEL);
+		udelay(400);
+		return;
+	}
+
+	/* On */
+	if (select_mode >= 1 && select_mode <= 6)
+		mode = select_mode;
+
+	hook_gpio_fsm_pulse_control(gpio, mode);
 }
 
 static int hook_general_spk(int id, int on)
 {
-	int gpio, mode;
+	int gpio;
 
 	sp_asoc_pr_info("%s enter\n", __func__);
 	if (extral_iic_pa_en > 0) {
@@ -377,41 +438,11 @@ static int hook_general_spk(int id, int on)
 		pr_err("%s gpio is invalid!\n", __func__);
 		return -EINVAL;
 	}
-	mode = hook_spk_priv.priv_data[id];
-	if (mode > GENERAL_SPK_MODE)
-		mode = 0;
+
 	if (ext_spk_pa_type == EXT_FSM_PA)
-		mode = FSM_SPK_DEFAULT_MODE;
-	pr_info("%s id: %d, gpio: %d, mode: %d, on: %d, select_mode %d, ext_spk_pa_type %s\n",
-		__func__, id, gpio, mode, on, select_mode,
-		ext_spk_pa_type ? "EXT_DEFAULT_PA" : "EXT_FSM_PA");
-
-	/* Off */
-	if (!on) {
-		gpio_set_value(gpio, !EN_LEVEL);
-		if (ext_spk_pa_type == EXT_FSM_PA)
-			udelay(400);
-		return HOOK_OK;
-	}
-
-	/* On */
-	if (select_mode) {
-		if (ext_spk_pa_type == EXT_FSM_PA) {
-			if (select_mode >= 1 && select_mode <= 6)
-				mode = select_mode;
-		} else {
-			mode = select_mode;
-		}
-	}
-
-	hook_gpio_pulse_control(gpio, mode);
-
-	/* When the first time open speaker path and play a very short sound,
-	 * the sound can't be heard. So add a delay here to make sure the AMP
-	 * is ready.
-	 */
-	if (ext_spk_pa_type != EXT_FSM_PA)
-		msleep(22);
+		ext_fsm_spk_pa(gpio, id, on);
+	else
+		ext_default_spk_pa(gpio, id, on);
 
 	return HOOK_OK;
 }

@@ -413,7 +413,6 @@ struct cm_alarm_status {
 struct cm_charge_pump_status {
 	bool cp_running;
 	bool check_cp_threshold;
-	int cp_ocv_threshold;
 	bool recovery;
 	int cp_state;
 	int cp_target_ibat;
@@ -600,6 +599,7 @@ struct charger_desc {
 	const char **psy_cp_stat;
 	const char **psy_wl_charger_stat;
 	const char **psy_cp_converter_stat;
+	const char **psy_stat;
 
 	int num_charger_regulators;
 	struct charger_regulator *charger_regulators;
@@ -674,14 +674,18 @@ struct charger_desc {
 	int cap_remap_full_percent;
 	bool is_fast_charge;
 	bool enable_fast_charge;
-	u32 fast_charge_enable_count;
 	u32 fast_charge_disable_count;
 	u32 double_ic_total_limit_current;
 	u32 cp_nums;
+	u32 buck_nums;
+	u32 psy_nums;
+	bool enable_multi_charger_adapt;
 
 	bool cm_check_int;
 	bool cm_check_fault;
 	u32 fast_charger_type;
+
+	int fchg_ocv_threshold;
 
 	struct cm_charge_pump_status cp;
 	struct cm_ir_compensation ir_comp;
@@ -695,6 +699,7 @@ struct charger_desc {
 };
 
 #define PSY_NAME_MAX	30
+#define PSY_OTG_NUM_MAX	10
 
 /**
  * struct charger_manager
