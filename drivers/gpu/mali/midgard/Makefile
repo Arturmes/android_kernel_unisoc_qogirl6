@@ -18,7 +18,7 @@
 #
 #
 
-KERNEL_SRC ?= "$(shell pwd)../../../../"
+KERNEL_SRC ?= "$(srctree)"
 KDIR ?= $(KERNEL_SRC)
 M ?= $(CURDIR)
 

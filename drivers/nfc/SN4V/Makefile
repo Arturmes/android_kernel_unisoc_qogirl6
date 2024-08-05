@@ -1,1 +1,1 @@
-obj-m += sec_nfc.o
+obj-y += sec_nfc.o
