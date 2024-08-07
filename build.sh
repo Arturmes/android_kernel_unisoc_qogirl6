@@ -20,8 +20,8 @@ export DTC_OVERLAY_TEST_EXT=$PWD/tools/mkdtimg/ufdt_apply_overlay
 export DTC_OVERLAY_VTS_EXT=$PWD/tools/mkdtimg/ufdt_verify_overlay_host
 
 if [ "$(clang --version | head -n1 | grep -o 11.0.1)" == "11.0.1" ]; then
-     make -C $PWD BSP_BUILD_DT_OVERLAY=y ARCH=arm64 DTC=dtc sprd_"$BSP_BUILD_FAMILY"_defconfig -j$(nproc --all)
-     make -C $PWD BSP_BUILD_DT_OVERLAY=y ARCH=arm64 DTC=dtc -j$(nproc --all)
+     make -C $PWD BSP_BUILD_DT_OVERLAY=y ARCH=arm64 DTC=dtc CC=clang sprd_"$BSP_BUILD_FAMILY"_defconfig -j$(nproc --all)
+     make -C $PWD BSP_BUILD_DT_OVERLAY=y ARCH=arm64 DTC=dtc CC=clang -j$(nproc --all)
      printf "Build succes!\n\r"
      exit 0
 else

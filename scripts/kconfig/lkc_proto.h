@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <stdarg.h>
 
+#pragma GCC diagnostic ignored "-Wreturn-type-c-linkage"
+
 /* confdata.c */
 void conf_parse(const char *name);
 int conf_read(const char *name);
