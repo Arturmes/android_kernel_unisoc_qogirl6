@@ -29,7 +29,7 @@
 #include <linux/sprd_dfs_drv.h>
 #include <trace/events/power.h>
 
-#include "sprd_dfs_trace.h"
+#include <trace/events/sprd_dfs_trace.h>
 
 #define FTRACE_DDR_NAME    "unisoc-ddr"
 

@@ -109,12 +109,7 @@ choice
 config DEVFREQ_SPRD_EXT_VOTE_UMS512
 	bool "Sprd ext vote for sharkl5Pro"
 	help
-          Ext vote registers for sharkl5Pro .
-
-config DEVFREQ_SPRD_EXT_VOTE_ROC1
-	bool "Sprd ext vote for roc1"
-	help
-          Ext vote registers for roc1 .
+          Ext vote registers for sharkl5Pro.
 
 endchoice
 

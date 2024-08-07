@@ -29,7 +29,7 @@
 #include <linux/sprd_dfs_drv.h>
 
 #define CREATE_TRACE_POINTS
-#include "sprd_dfs_trace.h"
+#include <trace/events/sprd_dfs_trace.h>
 
 enum dfs_master_cmd {
 	DFS_CMD_NORMAL		= 0x0000,

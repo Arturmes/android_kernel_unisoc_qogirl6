@@ -11,6 +11,8 @@
 
 #include "lkc.h"
 
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+
 struct symbol symbol_yes = {
 	.name = "y",
 	.curr = { "y", yes },
