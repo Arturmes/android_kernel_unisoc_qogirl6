@@ -27,9 +27,9 @@
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/delay.h>
 
-#define USB_GPIO_DEBOUNCE_MS	520	/* ms */
-#define USB_ID_GPIO_DEBOUNCE_MS	350	/* ms */
+#define USB_GPIO_DEBOUNCE_MS	20	/* ms */
 
 struct usb_extcon_info {
 	struct device *dev;
@@ -49,6 +49,11 @@ static const unsigned int usb_extcon_cable[] = {
 	EXTCON_USB_HOST,
 	EXTCON_NONE,
 };
+
+static int otg_switch_flage = 0;
+static struct usb_extcon_info *otg_info = NULL;
+static int cur_irq = 0;
+static int usb_state = EXTCON_NONE;
 
 /*
  * "USB" = VBUS and "USB-HOST" = !ID, so we have:
@@ -74,46 +79,71 @@ static void usb_extcon_detect_cable(struct work_struct *work)
 						    struct usb_extcon_info,
 						    wq_detcable);
 
-	/* check ID and VBUS and update cable state */
-	id = info->id_gpiod ?
-		gpiod_get_value_cansleep(info->id_gpiod) : 1;
-	vbus = info->vbus_gpiod ?
-		gpiod_get_value_cansleep(info->vbus_gpiod) : id;
-
-	if (!info->id_gpiod) {
-		printk("##%s## -typec-: id=%d, vbus=%d\n", __func__, id, vbus);
-		/* at first we clean states which are no longer active */
-		if (id)
+	id = gpiod_get_value_cansleep(info->id_gpiod);
+	vbus = gpiod_get_value_cansleep(info->vbus_gpiod);
+	if (info->id_gpiod && cur_irq == info->id_irq) {
+		dev_err(info->dev, "current irq %d get id state %d\n",cur_irq, id);
+		if (id) {
 			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, false);
-		if (!vbus)
-			extcon_set_state_sync(info->edev, EXTCON_USB, false);
-
-		if (!id) {
-			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, true);
+			usb_state = EXTCON_NONE;
 		} else {
-			if (vbus)
-				extcon_set_state_sync(info->edev, EXTCON_USB, true);
-		}
-	}
-	else {
-		printk("##%s## -Micro B-: id=%d, vbus=%d\n", __func__, id, vbus);
-		/* at first we clean states which are no longer active */
-		if (id)
-			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, false);
-		if (!vbus)
 			extcon_set_state_sync(info->edev, EXTCON_USB, false);
-		if (!id)
 			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, true);
-		if (vbus)
+			usb_state = EXTCON_USB_HOST;
+		}
+	} else if (cur_irq == info->vbus_irq){
+		dev_err(info->dev, "current irq %d get vbus state %d\n",cur_irq, vbus);
+		/* at first we clean states which are no longer active */
+		if (!vbus) {
+			extcon_set_state_sync(info->edev, EXTCON_USB, false);
+			usb_state = EXTCON_NONE;
+		} else {
 			extcon_set_state_sync(info->edev, EXTCON_USB, true);
+			usb_state = EXTCON_USB;
+		}
+	} else {
+		switch(usb_state){
+			case EXTCON_NONE:
+				extcon_set_state_sync(info->edev, EXTCON_USB_HOST, false);
+				if (!vbus) {
+					extcon_set_state_sync(info->edev, EXTCON_USB, false);
+					usb_state = EXTCON_NONE;
+				} else {
+					extcon_set_state_sync(info->edev, EXTCON_USB, true);
+					usb_state = EXTCON_USB;
+				}
+				break;
+			case EXTCON_USB:
+				if (!vbus) {
+					extcon_set_state_sync(info->edev, EXTCON_USB, false);
+					usb_state = EXTCON_NONE;
+				} else {
+					extcon_set_state_sync(info->edev, EXTCON_USB, true);
+					usb_state = EXTCON_USB;
+				}
+				break;
+			case EXTCON_USB_HOST:
+				if (id) {
+					extcon_set_state_sync(info->edev, EXTCON_USB_HOST, false);
+					usb_state = EXTCON_NONE;
+				} else {
+					extcon_set_state_sync(info->edev, EXTCON_USB_HOST, true);
+					usb_state = EXTCON_USB_HOST;
+				}
+				break;
+			default:
+				break;
+		}
+
+		dev_err(info->dev, "no irq happened, just get state id:%d,vbus:%d\n",id, vbus);
 	}
+	cur_irq = 0;
 }
 
 static irqreturn_t usb_irq_handler(int irq, void *dev_id)
 {
 	struct usb_extcon_info *info = dev_id;
-
-	printk("##%s## -enter-", __func__);
+	cur_irq = irq;
 
 	queue_delayed_work(system_power_efficient_wq, &info->wq_detcable,
 			   info->debounce_jiffies);
@@ -126,6 +156,7 @@ static int usb_extcon_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
 	struct usb_extcon_info *info;
+	void __iomem  *addr;
 	int ret;
 
 	if (!np)
@@ -140,6 +171,7 @@ static int usb_extcon_probe(struct platform_device *pdev)
 	info->vbus_gpiod = devm_gpiod_get_optional(&pdev->dev, "vbus",
 						   GPIOD_IN);
 
+	otg_info = info;
 	if (!info->id_gpiod && !info->vbus_gpiod) {
 		dev_err(dev, "failed to get gpios\n");
 		return -ENODEV;
@@ -165,7 +197,7 @@ static int usb_extcon_probe(struct platform_device *pdev)
 
 	if (info->id_gpiod)
 		ret = gpiod_set_debounce(info->id_gpiod,
-					 USB_ID_GPIO_DEBOUNCE_MS * 1000);
+					 USB_GPIO_DEBOUNCE_MS * 1000);
 	if (!ret && info->vbus_gpiod)
 		ret = gpiod_set_debounce(info->vbus_gpiod,
 					 USB_GPIO_DEBOUNCE_MS * 1000);
@@ -182,15 +214,12 @@ static int usb_extcon_probe(struct platform_device *pdev)
 			return info->id_irq;
 		}
 
-		ret = devm_request_threaded_irq(dev, info->id_irq, NULL,
-						usb_irq_handler,
-						IRQF_TRIGGER_RISING |
-						IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-						pdev->name, info);
-		if (ret < 0) {
-			dev_err(dev, "failed to request handler for ID IRQ\n");
-			return ret;
+		addr = ioremap(0x64710654, 128);
+		if(addr == NULL){
+			dev_err(otg_info->dev, "failed to get USB_ID addr\n");
+			return -EINVAL;;
 		}
+		writel_relaxed(0x00080045, addr);//pull down USB_ID
 	}
 
 	if (info->vbus_gpiod) {
@@ -218,6 +247,56 @@ static int usb_extcon_probe(struct platform_device *pdev)
 	usb_extcon_detect_cable(&info->wq_detcable.work);
 
 	return 0;
+}
+
+void otg_switch_mode(int value)
+{
+	int ret = 0;
+	void __iomem  *addr;
+
+	if(!otg_info->id_gpiod){
+		dev_err(otg_info->dev, "failed to request otg_info->id_gpiod\n");
+		return;
+	}
+	addr = ioremap(0x64710654, 128);
+	if(addr == NULL){
+		dev_err(otg_info->dev, "failed to get USB_ID addr\n");
+		return;
+	}
+	if (value) {
+		if (!otg_switch_flage) {
+			writel_relaxed(0x00080089, addr);//pull up USB_ID
+			msleep(100);
+			ret = devm_request_threaded_irq(otg_info->dev, otg_info->id_irq, NULL,
+						usb_irq_handler,
+						IRQF_TRIGGER_RISING |
+						IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+						NULL, otg_info);
+			if (ret < 0) {
+				dev_err(otg_info->dev, "failed to request handler for ID IRQ\n");
+				writel_relaxed(0x00080045, addr);//pull down USB_ID
+				iounmap(addr);
+				return;
+			}
+			otg_switch_flage = 1;
+			dev_err(otg_info->dev, "switch otg on\n");
+		} else {
+			dev_err(otg_info->dev, "otg is on, not switch\n");
+		}
+	} else {
+		if (otg_switch_flage) {
+			otg_switch_flage = 0;
+			disable_irq(otg_info->id_irq);
+			if (!gpiod_get_value(otg_info->id_gpiod))
+				extcon_set_state_sync(otg_info->edev, EXTCON_USB_HOST, false);
+			devm_free_irq(otg_info->dev, otg_info->id_irq, otg_info);
+			writel_relaxed(0x00080045, addr);//pull down USB_ID
+			dev_err(otg_info->dev, "switch otg off\n");
+		} else {
+			dev_err(otg_info->dev, "otg is off, not switch\n");
+		}
+	}
+	iounmap(addr);
 }
 
 static int usb_extcon_remove(struct platform_device *pdev)
