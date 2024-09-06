@@ -661,10 +661,10 @@ static long st21nfc_dev_ioctl(struct file *filp, unsigned int cmd,
    * IOC_DIR is from the user perspective, while access_ok is
    * from the kernel perspective; so they look reversed.
    */
-  if (_IOC_DIR(cmd) & _IOC_READ)
-    ret = !access_ok((void __user *)arg, _IOC_SIZE(cmd));
-  if (ret == 0 && _IOC_DIR(cmd) & _IOC_WRITE)
-    ret = !access_ok((void __user *)arg, _IOC_SIZE(cmd));
+  // if (_IOC_DIR(cmd) & _IOC_READ)
+  //   ret = !access_ok((void __user *)arg, _IOC_SIZE(cmd));
+  // if (ret == 0 && _IOC_DIR(cmd) & _IOC_WRITE)
+  //   ret = !access_ok((void __user *)arg, _IOC_SIZE(cmd));
   if (ret) return -EFAULT;
 
   switch (cmd) {
