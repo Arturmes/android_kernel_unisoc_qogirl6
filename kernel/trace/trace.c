@@ -2891,7 +2891,7 @@ void trace_printk_init_buffers(void)
 
 	/* trace_printk() is for debug use only. Don't use it in production. */
 
-	pr_warn("\n");
+	/* pr_warn("\n");
 	pr_warn("**********************************************************\n");
 	pr_warn("**   NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE   **\n");
 	pr_warn("**                                                      **\n");
@@ -2904,7 +2904,7 @@ void trace_printk_init_buffers(void)
 	pr_warn("** the kernel, report this immediately to your vendor!  **\n");
 	pr_warn("**                                                      **\n");
 	pr_warn("**   NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE   **\n");
-	pr_warn("**********************************************************\n");
+	pr_warn("**********************************************************\n"); */
 
 	/* Expand the buffers to set size */
 	tracing_update_buffers();
