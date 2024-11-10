@@ -11,9 +11,9 @@ menuconfig INPUT_TOUCHSCREEN
 
 if INPUT_TOUCHSCREEN
 
-source drivers/input/touchscreen/adaptive-ts/Kconfig
+source "drivers/input/touchscreen/adaptive-ts/Kconfig"
 
-source drivers/input/touchscreen/chipone/Kconfig
+source "drivers/input/touchscreen/chipone/Kconfig"
 
 config TOUCHSCREEN_NT36xxx_HOSTDL_SPI
 	bool "Novatek NT36xxx host download SPI driver"
@@ -1314,5 +1314,6 @@ config TOUCHSCREEN_SS_ENABLED
 	  If unsure, say N.
 
 source "drivers/input/touchscreen/hxchipset/Kconfig"
+source "drivers/input/touchscreen/omnivision_tcm/Kconfig"
 
 endif
