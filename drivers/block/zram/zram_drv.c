@@ -42,10 +42,10 @@ static DEFINE_MUTEX(zram_index_mutex);
 
 static int zram_major;
 
-#if IS_ENABLED(CONFIG_CRYPTO_LZ4)
-static const char *default_compressor = "lz4";
+#if IS_ENABLED(CONFIG_CRYPTO_ZSTD)
+static const char *default_compressor = "zstd";
 #else
-static const char *default_compressor = "lzo";
+static const char *default_compressor = "lz4";
 #endif
 
 /* Module params (documentation at end) */
