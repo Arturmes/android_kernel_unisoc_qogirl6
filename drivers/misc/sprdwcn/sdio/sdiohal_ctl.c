@@ -29,7 +29,7 @@
 #define TP_TX_BUF_LEN 2044
 #define TP_TX_POOL_SIZE 100
 
-#define FIRMWARE_PATH "/dev/block/platform/sdio_emmc/by-name/wcnmodem"
+#define FIRMWARE_PATH "/dev/block/by-name/wcnmodem"
 #define FIRMWARE_MAX_SIZE 0x90c00
 #define PACKET_SIZE		(32*1024)
 #define CP_START_ADDR		0

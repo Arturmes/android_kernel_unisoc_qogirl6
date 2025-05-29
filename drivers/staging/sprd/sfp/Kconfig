@@ -11,12 +11,12 @@ config SPRD_SFP_SUPPORT
 		Support soft and hardware fast path.
 
 config SPRD_SFP_TEST
-	bool "Do snfp test"
+	bool "Do sfp test"
 	depends on SPRD_SFP_SUPPORT
 	default n
 	help
 		This will include ipa test module.
-		Do snfp slef test.
+		Do sfp self test.
 		echo n to test proc file
 		to run foward rule config
 

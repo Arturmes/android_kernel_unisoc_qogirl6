@@ -28,8 +28,7 @@
 #include <linux/workqueue.h>
 #include <linux/pinctrl/consumer.h>
 
-#define USB_GPIO_DEBOUNCE_MS	520	/* ms */
-#define USB_ID_GPIO_DEBOUNCE_MS	350	/* ms */
+#define USB_GPIO_DEBOUNCE_MS	20	/* ms */
 
 struct usb_extcon_info {
 	struct device *dev;
@@ -80,30 +79,17 @@ static void usb_extcon_detect_cable(struct work_struct *work)
 	vbus = info->vbus_gpiod ?
 		gpiod_get_value_cansleep(info->vbus_gpiod) : id;
 
-	if (!info->id_gpiod) {
-		printk("##%s## -typec-: id=%d, vbus=%d\n", __func__, id, vbus);
-		/* at first we clean states which are no longer active */
-		if (id)
-			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, false);
-		if (!vbus)
-			extcon_set_state_sync(info->edev, EXTCON_USB, false);
+	pr_err("lqb %s(), id = %d, vbus = %d\n", __func__, id, vbus);
 
-		if (!id) {
-			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, true);
-		} else {
-			if (vbus)
-				extcon_set_state_sync(info->edev, EXTCON_USB, true);
-		}
-	}
-	else {
-		printk("##%s## -Micro B-: id=%d, vbus=%d\n", __func__, id, vbus);
-		/* at first we clean states which are no longer active */
-		if (id)
-			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, false);
-		if (!vbus)
-			extcon_set_state_sync(info->edev, EXTCON_USB, false);
-		if (!id)
-			extcon_set_state_sync(info->edev, EXTCON_USB_HOST, true);
+	/* at first we clean states which are no longer active */
+	if (id)
+		extcon_set_state_sync(info->edev, EXTCON_USB_HOST, false);
+	if (!vbus)
+		extcon_set_state_sync(info->edev, EXTCON_USB, false);
+
+	if (!id) {
+		extcon_set_state_sync(info->edev, EXTCON_USB_HOST, true);
+	} else {
 		if (vbus)
 			extcon_set_state_sync(info->edev, EXTCON_USB, true);
 	}
@@ -112,8 +98,6 @@ static void usb_extcon_detect_cable(struct work_struct *work)
 static irqreturn_t usb_irq_handler(int irq, void *dev_id)
 {
 	struct usb_extcon_info *info = dev_id;
-
-	printk("##%s## -enter-", __func__);
 
 	queue_delayed_work(system_power_efficient_wq, &info->wq_detcable,
 			   info->debounce_jiffies);
@@ -165,7 +149,7 @@ static int usb_extcon_probe(struct platform_device *pdev)
 
 	if (info->id_gpiod)
 		ret = gpiod_set_debounce(info->id_gpiod,
-					 USB_ID_GPIO_DEBOUNCE_MS * 1000);
+					 USB_GPIO_DEBOUNCE_MS * 1000);
 	if (!ret && info->vbus_gpiod)
 		ret = gpiod_set_debounce(info->vbus_gpiod,
 					 USB_GPIO_DEBOUNCE_MS * 1000);

@@ -57,7 +57,7 @@
 		phandle = <0xed>;
 
 		syscon@20000000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x20000000 0x00 0x3000>;
 			phandle = <0x05>;
@@ -70,30 +70,30 @@
 			ranges;
 
 			serial@0x200a0000 {
-				compatible = "sprd,ums9230-uart\0sprd,sc9836-uart";
+				compatible = "sprd,ums9230-uart", "sprd,sc9836-uart";
 				reg = <0x00 0x200a0000 0x00 0x100>;
 				interrupts = <0x00 0x02 0x04>;
-				clock-names = "enable\0uart\0source";
+				clock-names = "enable", "uart", "source";
 				clocks = <0x02 0x0e 0x03 0x01 0x04>;
 				status = "okay";
 				phandle = <0xee>;
 			};
 
 			serial@0x200b0000 {
-				compatible = "sprd,ums9230-uart\0sprd,sc9836-uart";
+				compatible = "sprd,ums9230-uart", "sprd,sc9836-uart";
 				reg = <0x00 0x200b0000 0x00 0x100>;
 				interrupts = <0x00 0x03 0x04>;
-				clock-names = "enable\0uart\0source";
+				clock-names = "enable", "uart", "source";
 				clocks = <0x02 0x0f 0x03 0x02 0x04>;
 				status = "okay";
 				phandle = <0xef>;
 			};
 
 			serial@0x200c0000 {
-				compatible = "sprd,ums9230-uart\0sprd,sc9836-uart";
+				compatible = "sprd,ums9230-uart", "sprd,sc9836-uart";
 				reg = <0x00 0x200c0000 0x00 0x100>;
 				interrupts = <0x00 0x04 0x04>;
-				clock-names = "enable\0uart\0source";
+				clock-names = "enable", "uart", "source";
 				clocks = <0x02 0x10 0x03 0x03 0x04>;
 				status = "okay";
 				phandle = <0xf0>;
@@ -109,7 +109,7 @@
 				status = "disabled";
 				syscon-names = "i2c_rst";
 				syscons = <0x05 0x04 0x100>;
-				clock-names = "enable\0i2c\0source";
+				clock-names = "enable", "i2c", "source";
 				clocks = <0x02 0x09 0x03 0x04 0x04>;
 				phandle = <0xf1>;
 			};
@@ -124,7 +124,7 @@
 				status = "disabled";
 				syscon-names = "i2c_rst";
 				syscons = <0x05 0x04 0x200>;
-				clock-names = "enable\0i2c\0source";
+				clock-names = "enable", "i2c", "source";
 				clocks = <0x02 0x0a 0x03 0x05 0x04>;
 				phandle = <0xf2>;
 			};
@@ -139,7 +139,7 @@
 				status = "disabled";
 				syscon-names = "i2c_rst";
 				syscons = <0x05 0x04 0x400>;
-				clock-names = "enable\0i2c\0source";
+				clock-names = "enable", "i2c", "source";
 				clocks = <0x02 0x0b 0x03 0x06 0x04>;
 				phandle = <0xf3>;
 			};
@@ -154,7 +154,7 @@
 				status = "disabled";
 				syscon-names = "i2c_rst";
 				syscons = <0x05 0x04 0x800>;
-				clock-names = "enable\0i2c\0source";
+				clock-names = "enable", "i2c", "source";
 				clocks = <0x02 0x0c 0x03 0x07 0x04>;
 				phandle = <0xf4>;
 			};
@@ -169,7 +169,7 @@
 				status = "disabled";
 				syscon-names = "i2c_rst";
 				syscons = <0x05 0x04 0x1000>;
-				clock-names = "enable\0i2c\0source";
+				clock-names = "enable", "i2c", "source";
 				clocks = <0x02 0x0d 0x03 0x08 0x04>;
 				phandle = <0xf5>;
 			};
@@ -213,7 +213,7 @@
 				status = "disabled";
 				syscon-names = "i2c_rst";
 				syscons = <0x05 0x04 0x4000000>;
-				clock-names = "enable\0i2c\0source";
+				clock-names = "enable", "i2c", "source";
 				clocks = <0x02 0x1a 0x03 0x09 0x04>;
 				phandle = <0xf6>;
 			};
@@ -228,55 +228,55 @@
 				status = "disabled";
 				syscon-names = "i2c_rst";
 				syscons = <0x05 0x04 0x8000000>;
-				clock-names = "enable\0i2c\0source";
+				clock-names = "enable", "i2c", "source";
 				clocks = <0x02 0x1b 0x03 0x0a 0x04>;
 				phandle = <0xf7>;
 			};
 
 			spi@20120000 {
-				compatible = "sprd,sc9860-spi\0sprd,sharkl5-spi";
+				compatible = "sprd,sc9860-spi", "sprd,sharkl5-spi";
 				reg = <0x00 0x20120000 0x00 0x1000>;
 				interrupts = <0x00 0x05 0x04>;
 				#address-cells = <0x01>;
 				#size-cells = <0x00>;
 				status = "okay";
-				clock-names = "enable\0spi\0source";
+				clock-names = "enable", "spi", "source";
 				clocks = <0x02 0x05 0x03 0x0b 0x06 0x03>;
 				phandle = <0xf8>;
 			};
 
 			spi@20130000 {
-				compatible = "sprd,sc9860-spi\0sprd,sharkl5-spi";
+				compatible = "sprd,sc9860-spi", "sprd,sharkl5-spi";
 				reg = <0x00 0x20130000 0x00 0x1000>;
 				interrupts = <0x00 0x06 0x04>;
 				#address-cells = <0x01>;
 				#size-cells = <0x00>;
 				status = "disabled";
-				clock-names = "enable\0spi\0source";
+				clock-names = "enable", "spi", "source";
 				clocks = <0x02 0x06 0x03 0x0c 0x06 0x03>;
 				phandle = <0xf9>;
 			};
 
 			spi@20140000 {
-				compatible = "sprd,sc9860-spi\0sprd,sharkl5-spi";
+				compatible = "sprd,sc9860-spi", "sprd,sharkl5-spi";
 				reg = <0x00 0x20140000 0x00 0x1000>;
 				interrupts = <0x00 0x07 0x04>;
 				#address-cells = <0x01>;
 				#size-cells = <0x00>;
 				status = "disabled";
-				clock-names = "enable\0spi\0source";
+				clock-names = "enable", "spi", "source";
 				clocks = <0x02 0x07 0x03 0x0d 0x06 0x03>;
 				phandle = <0xfa>;
 			};
 
 			spi@20150000 {
-				compatible = "sprd,sc9860-spi\0sprd,sharkl5-spi";
+				compatible = "sprd,sc9860-spi", "sprd,sharkl5-spi";
 				reg = <0x00 0x20150000 0x00 0x1000>;
 				interrupts = <0x00 0x08 0x04>;
 				#address-cells = <0x01>;
 				#size-cells = <0x00>;
 				status = "disabled";
-				clock-names = "enable\0spi\0source";
+				clock-names = "enable", "spi", "source";
 				clocks = <0x02 0x08 0x03 0x0e 0x06 0x03>;
 				phandle = <0xfb>;
 			};
@@ -286,7 +286,7 @@
 				reg = <0x00 0x201d0000 0x00 0x1000>;
 				interrupts = <0x00 0x0a 0x04>;
 				status = "okay";
-				clock-names = "sdio_clk\0sdio_clk_source\0sdio_ahb_enable";
+				clock-names = "sdio_clk", "sdio_clk_source", "sdio_ahb_enable";
 				clocks = <0x03 0x16 0x07 0x00 0x02 0x19>;
 				sprd,hs400es-dly = <0x40 0x80 0x3d 0x3d>;
 				sprd,hs400-dly = <0x3f 0xb5 0x3d 0x3d>;
@@ -315,8 +315,8 @@
 				interrupts = <0x00 0x13 0x04>;
 				status = "okay";
 				syscons = <0x09 0x444 0x04 0x09 0x444 0x08 0x09 0x444 0x80 0x09 0x444 0xff0000>;
-				syscon-names = "sd_detect_pol\0sd_hotplug_protect_en\0sd_hotplug_debounce_en\0sd_hotplug_debounce_cn";
-				clock-names = "sdio_clk\0sdio_clk_source\0sdio_ahb_enable";
+				syscon-names = "sd_detect_pol", "sd_hotplug_protect_en", "sd_hotplug_debounce_en", "sd_hotplug_debounce_cn";
+				clock-names = "sdio_clk", "sdio_clk_source", "sdio_ahb_enable";
 				clocks = <0x03 0x14 0x07 0x00 0x02 0x16>;
 				sprd,sdr104-dly = <0x7f 0xb3 0xb7 0xb7>;
 				sprd,sdr50-dly = <0x7f 0x7f 0x45 0x45>;
@@ -340,7 +340,7 @@
 				reg = <0x00 0x201b0000 0x00 0x1000>;
 				interrupts = <0x00 0x14 0x04>;
 				status = "disabled";
-				clock-names = "sdio_clk\0sdio_clk_source\0sdio_ahb_enable";
+				clock-names = "sdio_clk", "sdio_clk_source", "sdio_ahb_enable";
 				clocks = <0x03 0x15 0x06 0x17 0x02 0x17>;
 				phandle = <0xfe>;
 			};
@@ -364,7 +364,7 @@
 			rng@201e0000 {
 				compatible = "sprd,sprd-trng";
 				reg = <0x00 0x201e0000 0x00 0x10000>;
-				clock-names = "ce-pub-eb\0ap-ce-clk\0source";
+				clock-names = "ce-pub-eb", "ap-ce-clk", "source";
 				clocks = <0x02 0x1e 0x03 0x13 0x06 0x09>;
 				phandle = <0x101>;
 			};
@@ -373,20 +373,20 @@
 				compatible = "sprd,ufshc";
 				vcc-supply = <0x08>;
 				vcc-fixed-regulator;
-				clock-names = "ufs_reg_eb\0ufs_en\0ufs_pclk\0ufs_pclk_source\0ufs_hclk\0ufs_hclk_source";
+				clock-names = "ufs_reg_eb", "ufs_en", "ufs_pclk", "ufs_pclk_source", "ufs_hclk", "ufs_hclk_source";
 				clocks = <0x02 0x20 0x02 0x1f 0x03 0x1b 0x06 0x09 0x03 0x17 0x06 0x09>;
 				freq-table-hz = <0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00>;
 				reg = <0x00 0x20200000 0x00 0x10000 0x00 0x20400000 0x00 0x10000 0x00 0x64560000 0x00 0x10000>;
-				reg-names = "ufshci_reg\0ap_ahb_reg\0ufs_analog_reg";
+				reg-names = "ufshci_reg", "ap_ahb_reg", "ufs_analog_reg";
 				syscons = <0x09 0x04 0x1800 0x0c 0x3124 0x40 0x05 0x04 0x1000000 0x05 0x0c 0x01 0x0c 0x311c 0x01 0x0c 0x3104 0x37000000 0x0c 0x3104 0x8000000 0x0c 0x3104 0x42000000 0x0c 0x311c 0x06>;
-				syscon-names = "aon_apb_ufs_en\0ap_ahb_ufs_clk\0ap_apb_ufs_rst\0ap_apb_ufs_en\0ufs_refclk_on\0ahb_ufs_lp\0ahb_ufs_force_isol\0ahb_ufs_lp_1\0ahb_ufs_cb";
+				syscon-names = "aon_apb_ufs_en", "ap_ahb_ufs_clk", "ap_apb_ufs_rst", "ap_apb_ufs_en", "ufs_refclk_on", "ahb_ufs_lp", "ahb_ufs_force_isol", "ahb_ufs_lp_1", "ahb_ufs_cb";
 				interrupts = <0x00 0x93 0x04>;
 				phandle = <0x102>;
 			};
 		};
 
 		syscon@20400000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x20400000 0x00 0x4000>;
 			phandle = <0x0c>;
@@ -400,9 +400,9 @@
 
 			mm_domain {
 				compatible = "sprd,mm-domain";
-				syscon-names = "force_shutdown\0shutdown_en\0power_state";
+				syscon-names = "force_shutdown", "shutdown_en", "power_state";
 				syscons = <0x0d 0x2e8 0x2000000 0x0d 0x2e8 0x1000000 0x0d 0x508 0x1f000000>;
-				clock-names = "clk_mm_eb\0clk_mm_ahb_eb\0clk_mm_ahb\0clk_mm_ahb_parent\0clk_mm_mtx\0clk_mm_mtx_parent\0clk_isppll";
+				clock-names = "clk_mm_eb", "clk_mm_ahb_eb", "clk_mm_ahb", "clk_mm_ahb_parent", "clk_mm_mtx", "clk_mm_mtx_parent", "clk_isppll";
 				clocks = <0x0e 0x08 0x0f 0x07 0x10 0x00 0x06 0x0f 0x10 0x01 0x06 0x08 0x06 0x1b>;
 				mm_qos_threshold = <0x11>;
 				phandle = <0x103>;
@@ -413,10 +413,10 @@
 				reg = <0x00 0x32000000 0x00 0xc000>;
 				interrupts = <0x00 0x22 0x04>;
 				syscons = <0x0c 0x04 0x2800 0x0d 0x314 0x2000000 0x0d 0x314 0x1000000 0x0d 0x514 0x1f0000 0x09 0x04 0x20>;
-				syscon-names = "reset\0pmu_vsp_force_shutdown\0pmu_vsp_auto_shutdown\0pmu_pwr_status\0vsp_domain_eb";
+				syscon-names = "reset", "pmu_vsp_force_shutdown", "pmu_vsp_auto_shutdown", "pmu_pwr_status", "vsp_domain_eb";
 				iommus = <0x12>;
 				status = "okay";
-				clock-names = "clk_ahb_gate_vsp_eb\0clk_src_256m\0clk_src_307m2\0clk_src_384m\0clk_vsp";
+				clock-names = "clk_ahb_gate_vsp_eb", "clk_src_256m", "clk_src_307m2", "clk_src_384m", "clk_vsp";
 				clocks = <0x13 0x02 0x06 0x09 0x06 0x0c 0x06 0x02 0x03 0x1c>;
 				phandle = <0x104>;
 			};
@@ -437,11 +437,11 @@
 				reg = <0x00 0x36000000 0x00 0xc000>;
 				interrupts = <0x00 0x2a 0x04>;
 				syscons = <0x14 0x04 0x80000 0x09 0x00 0x200>;
-				syscon-names = "reset\0aon_apb_eb";
+				syscon-names = "reset", "aon_apb_eb";
 				iommus = <0x15>;
 				jpg_qos = <0x16>;
 				status = "okay";
-				clock-names = "jpg_domain_eb\0jpg_dev_eb\0jpg_ckg_eb\0jpg_clk\0clk_src_76m8\0clk_src_128m\0clk_src_256m\0clk_src_384m";
+				clock-names = "jpg_domain_eb", "jpg_dev_eb", "jpg_ckg_eb", "jpg_clk", "clk_src_76m8", "clk_src_128m", "clk_src_256m", "clk_src_384m";
 				clocks = <0x0e 0x08 0x0f 0x01 0x0f 0x07 0x10 0x06 0x06 0x10 0x06 0x0a 0x06 0x09 0x06 0x02>;
 				phandle = <0x105>;
 			};
@@ -517,7 +517,7 @@
 				compatible = "sprd,csi-controller";
 				reg = <0x00 0x3e200000 0x00 0x1000>;
 				interrupts = <0x00 0x2d 0x04 0x00 0x2e 0x04 0x00 0x2f 0x04 0x00 0x30 0x04>;
-				clock-names = "clk_mipi_csi_gate_eb\0clk_csi_eb\0mipi_csi_src_eb";
+				clock-names = "clk_mipi_csi_gate_eb", "clk_csi_eb", "mipi_csi_src_eb";
 				clocks = <0x0f 0x10 0x0f 0x06 0x10 0x0b>;
 				sprd,aon-apb-syscon = <0x09>;
 				sprd,cam-ahb-syscon = <0x14>;
@@ -533,7 +533,7 @@
 				compatible = "sprd,csi-controller";
 				reg = <0x00 0x3e300000 0x00 0x1000>;
 				interrupts = <0x00 0x31 0x04 0x00 0x32 0x04 0x00 0x33 0x04 0x00 0x34 0x04>;
-				clock-names = "clk_mipi_csi_gate_eb\0clk_csi_eb\0mipi_csi_src_eb";
+				clock-names = "clk_mipi_csi_gate_eb", "clk_csi_eb", "mipi_csi_src_eb";
 				clocks = <0x0f 0x0f 0x0f 0x05 0x10 0x0c>;
 				sprd,aon-apb-syscon = <0x09>;
 				sprd,cam-ahb-syscon = <0x14>;
@@ -549,7 +549,7 @@
 				compatible = "sprd,csi-controller";
 				reg = <0x00 0x3e400000 0x00 0x1000>;
 				interrupts = <0x00 0x35 0x04 0x00 0x36 0x04 0x00 0x37 0x04 0x00 0x38 0x04>;
-				clock-names = "clk_mipi_csi_gate_eb\0clk_csi_eb\0mipi_csi_src_eb";
+				clock-names = "clk_mipi_csi_gate_eb", "clk_csi_eb", "mipi_csi_src_eb";
 				clocks = <0x0f 0x0e 0x0f 0x04 0x10 0x0d>;
 				sprd,aon-apb-syscon = <0x09>;
 				sprd,cam-ahb-syscon = <0x14>;
@@ -565,12 +565,12 @@
 				compatible = "sprd,isp";
 				reg = <0x00 0x3a000000 0x00 0x100000>;
 				interrupts = <0x00 0x2b 0x04 0x00 0x2c 0x04>;
-				interrupts_name = "ispch0\0ispch1";
-				clock-names = "isp_eb\0isp_axi_eb\0isp_clk\0isp_clk_256m\0isp_clk_307m2\0isp_clk_384m\0isp_clk_468m\0isp_clk_512m\0isp_clk_parent";
+				interrupts_name = "ispch0", "ispch1";
+				clock-names = "isp_eb", "isp_axi_eb", "isp_clk", "isp_clk_256m", "isp_clk_307m2", "isp_clk_384m", "isp_clk_468m", "isp_clk_512m", "isp_clk_parent";
 				clocks = <0x0f 0x03 0x0f 0x08 0x10 0x0a 0x06 0x09 0x06 0x0c 0x06 0x02 0x06 0x1b 0x06 0x08 0x06 0x08>;
 				syscons = <0x14 0x04 0x400 0x14 0x04 0x1000 0x14 0x04 0x800 0x14 0x00 0x08>;
 				sprd,cam-ahb-syscon = <0x14>;
-				syscon-names = "reset\0isp_ahb_reset\0isp_vau_reset\0isp_enable";
+				syscon-names = "reset", "isp_ahb_reset", "isp_vau_reset", "isp_enable";
 				sprd,isp-count = <0x01>;
 				iommus = <0x18>;
 				isp_qos = <0x19>;
@@ -592,13 +592,13 @@
 			dcam@3e000000 {
 				compatible = "sprd,qogirl6-cam";
 				reg = <0x00 0x3e000000 0x00 0x1000 0x00 0x3e001000 0x00 0x1000 0x00 0x3e002000 0x00 0x1000 0x00 0x3e003000 0x00 0x1000>;
-				reg-names = "dcam0_reg\0dcam1_reg\0dcam2_reg\0axi_ctrl_reg";
+				reg-names = "dcam0_reg", "dcam1_reg", "dcam2_reg", "axi_ctrl_reg";
 				interrupts = <0x00 0x39 0x04 0x00 0x3a 0x04 0x00 0x3b 0x04>;
-				interrupt-names = "dcam0\0dcam1\0dcam2";
-				clock-names = "dcam_eb\0dcam_clk\0dcam_clk_192m\0dcam_clk_256m\0dcam_clk_307m2\0dcam_clk_384m\0dcam_clk_468m\0dcam_clk_parent";
+				interrupt-names = "dcam0", "dcam1", "dcam2";
+				clock-names = "dcam_eb", "dcam_clk", "dcam_clk_192m", "dcam_clk_256m", "dcam_clk_307m2", "dcam_clk_384m", "dcam_clk_468m", "dcam_clk_parent";
 				clocks = <0x0f 0x02 0x10 0x08 0x06 0x03 0x06 0x09 0x06 0x0c 0x06 0x02 0x06 0x1b 0x06 0x1b>;
 				syscons = <0x14 0x04 0x800000 0x14 0x04 0x20 0x14 0x04 0x10 0x14 0x04 0x08>;
-				syscon-names = "dcam_all_reset\0dcam0_reset\0dcam1_reset\0dcam2_reset";
+				syscon-names = "dcam_all_reset", "dcam0_reset", "dcam1_reset", "dcam2_reset";
 				sprd,cam-ahb-syscon = <0x14>;
 				sprd,isp = <0x1a>;
 				sprd,dcam-count = <0x03>;
@@ -626,10 +626,10 @@
 				reg = <0x00 0x3c000000 0x00 0x100000>;
 				interrupts = <0x00 0x28 0x04>;
 				interrupts_name = "fdraw";
-				clock-names = "fd_eb\0fd_axi_eb\0fd_clk\0fd_clk_parent";
+				clock-names = "fd_eb", "fd_axi_eb", "fd_clk", "fd_clk_parent";
 				clocks = <0x0f 0x0a 0x0f 0x03 0x10 0x07 0x06 0x02>;
 				syscons = <0x14 0x00 0x400 0x14 0x04 0x4000000 0x14 0x04 0x8000000 0x14 0x40 0x10000 0x14 0x00 0x200>;
-				syscon-names = "fd_eb\0fd_rst\0fd_save_rst\0fd_lpc\0fd_dvfs_eb";
+				syscon-names = "fd_eb", "fd_rst", "fd_save_rst", "fd_lpc", "fd_dvfs_eb";
 				iommus = <0x1d>;
 				fd_qos = <0x1e>;
 				status = "okay";
@@ -651,7 +651,7 @@
 				compatible = "sprd,cpp";
 				reg = <0x00 0x38000000 0x00 0x1000>;
 				interrupts = <0x00 0x29 0x04>;
-				clock-names = "cpp_eb\0cpp_axi_eb\0cpp_clk\0cpp_clk_parent";
+				clock-names = "cpp_eb", "cpp_axi_eb", "cpp_clk", "cpp_clk_parent";
 				clocks = <0x0f 0x00 0x0f 0x03 0x10 0x05 0x06 0x02>;
 				sprd,cam-ahb-syscon = <0x14>;
 				iommus = <0x1f>;
@@ -682,7 +682,7 @@
 				syscons = <0x0d 0x2c4 0x2000000>;
 				syscon-names = "top-force-shutdown";
 				interrupts = <0x00 0x3c 0x04 0x00 0x3c 0x04 0x00 0x3c 0x04>;
-				interrupt-names = "JOB\0MMU\0GPU";
+				interrupt-names = "JOB", "MMU", "GPU";
 				nvmem-cells = <0x25>;
 				nvmem-cell-names = "gpu_bin";
 				operating-points = <0x5dc00 0xaae60 0x7d000 0xb71b0 0x96000 0xb71b0 0xbb800 0xc3500 0xcf850 0xc3500>;
@@ -720,14 +720,14 @@
 				compatible = "sprd,display-processor";
 				reg = <0x00 0x31000000 0x00 0x1000>;
 				syscons = <0x0c 0x04 0x02 0x0c 0x04 0x4000>;
-				syscon-names = "disp_reset\0iommu_reset";
+				syscon-names = "disp_reset", "iommu_reset";
 				interrupts = <0x00 0x1b 0x04>;
 				status = "okay";
 				iommus = <0x27>;
 				dma-coherent;
 				sprd,ip = "dpu-r5p0";
 				sprd,soc = "qogirl6";
-				clock-names = "clk_src_96m\0clk_src_128m\0clk_src_153m6\0clk_src_192m\0clk_src_250m\0clk_src_256m\0clk_src_307m2\0clk_src_333m3\0clk_src_384m\0clk_dpu_core\0clk_dpu_dpi\0clk_ap_ahb_disp_eb\0clk_dsi_iso_sw_en\0dsi_div6clk_gate";
+				clock-names = "clk_src_96m", "clk_src_128m", "clk_src_153m6", "clk_src_192m", "clk_src_250m", "clk_src_256m", "clk_src_307m2", "clk_src_333m3", "clk_src_384m", "clk_dpu_core", "clk_dpu_dpi", "clk_ap_ahb_disp_eb", "clk_dsi_iso_sw_en", "dsi_div6clk_gate";
 				clocks = <0x06 0x04 0x06 0x0a 0x06 0x0f 0x06 0x03 0x28 0x06 0x09 0x06 0x0c 0x29 0x06 0x02 0x03 0x1d 0x03 0x1e 0x13 0x01 0x2a 0x00 0x2a 0x01>;
 				phandle = <0x114>;
 
@@ -748,7 +748,7 @@
 				kcfg-num = <0x10>;
 				interrupts = <0x00 0x1a 0x04>;
 				iommus = <0x27>;
-				clock-names = "clk_dpu_core_src\0clk_dpu_core\0clk_ap_ahb_disp_eb";
+				clock-names = "clk_dpu_core_src", "clk_dpu_core", "clk_ap_ahb_disp_eb";
 				clocks = <0x06 0x02 0x03 0x1d 0x13 0x01>;
 				phandle = <0xcb>;
 			};
@@ -771,7 +771,7 @@
 				syscon-names = "reset";
 				interrupts = <0x00 0x1e 0x04 0x00 0x1f 0x04>;
 				status = "okay";
-				sprd,ip = "sprd,dsi-ctrl\0r3p1";
+				sprd,ip = "sprd,dsi-ctrl", "r3p1";
 				sprd,soc = "qogirl6";
 				clock-names = "clk_ap_ahb_dsi_eb";
 				clocks = <0x13 0x00>;
@@ -826,7 +826,7 @@
 				#size-cells = <0x00>;
 				reg = <0x00 0x31100000 0x00 0x1000>;
 				syscons = <0x0c 0x40 0x03 0x0d 0x9c 0x20>;
-				syscon-names = "enable\0power";
+				syscon-names = "enable", "power";
 				status = "okay";
 				sprd,ip = "sprd,megacores-sharkl5";
 				sprd,soc = "qogirl6";
@@ -854,21 +854,21 @@
 		};
 
 		syscon@23000000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x23000000 0x00 0x3000>;
 			phandle = <0x23>;
 		};
 
 		syscon@23014000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x23014000 0x00 0x3000>;
 			phandle = <0x24>;
 		};
 
 		syscon@30000000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x30000000 0x00 0x3000>;
 			phandle = <0x14>;
@@ -903,21 +903,21 @@
 		};
 
 		syscon@56000000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x56000000 0x00 0x3000>;
 			phandle = <0x7f>;
 		};
 
 		syscon@5600d000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x5600d000 0x00 0x1000>;
 			phandle = <0x92>;
 		};
 
 		syscon@60000000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x60000000 0x00 0x11000>;
 			phandle = <0x31>;
@@ -933,11 +933,11 @@
 				compatible = "sprd,qogirl6-dmc-mpu";
 				reg = <0x00 0x60200000 0x00 0x10000>;
 				interrupts = <0x00 0x6f 0x04>;
-				syscon-names = "irq_clr\0irq_en";
+				syscon-names = "irq_clr", "irq_en";
 				syscons = <0x31 0x32f0 0x200 0x31 0x32f0 0x100>;
 				sprd,channel-num = <0x08>;
 				sprd,mpu-num = <0x10>;
-				sprd,channel-names = "CPU\0GPU\0DPU/DCAM\0ISP\0AP/VSP/AON\0WTLCP\0PUBCP/AUDCP\0WCN\0SHARED0\0SHARED1\0SHARED2\0SHARED3\0SHARED4\0SHARED5\0SHARED6\0SHARED7";
+				sprd,channel-names = "CPU", "GPU", "DPU/DCAM", "ISP", "AP/VSP/AON", "WTLCP", "PUBCP/AUDCP", "WCN", "SHARED0", "SHARED1", "SHARED2", "SHARED3", "SHARED4", "SHARED5", "SHARED6", "SHARED7";
 				sprd,ranges = <0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00>;
 				sprd,chn-config = <0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01>;
 				sprd,id-config = <0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff 0x00 0x00 0xffff>;
@@ -959,108 +959,108 @@
 				interrupts = <0x00 0x6d 0x04>;
 				syscon-names = "enable";
 				syscons = <0x31 0x31cc 0x80>;
-				clock-names = "clk_cs\0cs_src";
+				clock-names = "clk_cs", "cs_src";
 				clocks = <0x32 0x21 0x06 0x09>;
 				sprd,funnel-port = <0x03>;
 				sprd,ddr-chn = <0x08>;
-				sprd,chn-name = "CPU\0GPU\0DPU/DCAM\0ISP\0AP/VSP/AON\0WTLCP\0PUBCP/AUDCP\0WCN";
+				sprd,chn-name = "CPU", "GPU", "DPU/DCAM", "ISP", "AP/VSP/AON", "WTLCP", "PUBCP/AUDCP", "WCN";
 				phandle = <0x11e>;
 			};
 		};
 
 		syscon@64000000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64000000 0x00 0x3000>;
 			phandle = <0x09>;
 		};
 
 		syscon@64020000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64020000 0x00 0x3000>;
 			phandle = <0x0d>;
 		};
 
 		syscon@64300000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64300000 0x00 0x1000>;
 			phandle = <0x11f>;
 		};
 
 		syscon@64310000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64310000 0x00 0x1000>;
 			phandle = <0x120>;
 		};
 
 		syscon@64320000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64320000 0x00 0x1000>;
 			phandle = <0x121>;
 		};
 
 		syscon@64330000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64330000 0x00 0x1000>;
 			phandle = <0x122>;
 		};
 
 		syscon@64340000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64340000 0x00 0x1000>;
 			phandle = <0x123>;
 		};
 
 		syscon@64350000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64350000 0x00 0x1000>;
 			phandle = <0x124>;
 		};
 
 		syscon@64550000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64550000 0x00 0x3000>;
 			phandle = <0x8f>;
 		};
 
 		syscon@64560000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64560000 0x00 0x3000>;
 			phandle = <0x90>;
 		};
 
 		syscon@64570000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64570000 0x00 0x3000>;
 			phandle = <0x7b>;
 		};
 
 		syscon@64580000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x64580000 0x00 0x3000>;
 			phandle = <0x76>;
 		};
 
 		syscon@645a0000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x645a0000 0x00 0x3000>;
 			phandle = <0x75>;
 		};
 
 		syscon@645b0000 {
-			compatible = "sprd,ums9230-glbregs\0syscon";
+			compatible = "sprd,ums9230-glbregs", "syscon";
 			#syscon-cells = <0x02>;
 			reg = <0x00 0x645b0000 0x00 0x3000>;
 			phandle = <0x17>;
@@ -1143,7 +1143,7 @@
 				compatible = "sprd,qogirl6-hw-i2c";
 				reg = <0x00 0x641a0000 0x00 0x100>;
 				interrupts = <0x00 0x44 0x04>;
-				clock-names = "source\0enable\0i2c\0clk_hw_i2c";
+				clock-names = "source", "enable", "i2c", "clk_hw_i2c";
 				clocks = <0x04 0x0e 0x25 0x32 0x10>;
 				sprd,hw-channels = <0x05 0x6002 0x07 0x6000>;
 				clock-frequency = <0x61a80>;
@@ -1154,13 +1154,13 @@
 			};
 
 			thermal@644B0000 {
-				compatible = "sprd,sharkl5-thermal\0sprd,qogirl6-thermal";
+				compatible = "sprd,sharkl5-thermal", "sprd,qogirl6-thermal";
 				reg = <0x00 0x644b0000 0x00 0x10000>;
 				clock-names = "enable";
 				clocks = <0x0e 0x21>;
 				#thermal-sensor-cells = <0x01>;
 				nvmem-cells = <0x33 0x34>;
-				nvmem-cell-names = "thm_sign_cal\0thm_ratio_cal";
+				nvmem-cell-names = "thm_sign_cal", "thm_ratio_cal";
 				phandle = <0xe6>;
 
 				cputop0-sensor@0 {
@@ -1201,13 +1201,13 @@
 			};
 
 			thermal@644D0000 {
-				compatible = "sprd,sharkl5-thermal\0sprd,qogirl6-thermal";
+				compatible = "sprd,sharkl5-thermal", "sprd,qogirl6-thermal";
 				reg = <0x00 0x644d0000 0x00 0x10000>;
 				clock-names = "enable";
 				clocks = <0x0e 0x23>;
 				#thermal-sensor-cells = <0x01>;
 				nvmem-cells = <0x3b 0x3c>;
-				nvmem-cell-names = "thm_sign_cal\0thm_ratio_cal";
+				nvmem-cell-names = "thm_sign_cal", "thm_ratio_cal";
 				phandle = <0xe7>;
 
 				gpu-sensor@0 {
@@ -1244,7 +1244,7 @@
 			cluster0-sensor@15 {
 				compatible = "sprd,cluster0-thermal";
 				#thermal-sensor-cells = <0x01>;
-				sensor-names = "ank0-tzone1\0ank1-thmzone\0ank2-thmzone\0ank3-thmzone\0ank4-thmzone\0ank5-thmzone";
+				sensor-names = "ank0-tzone1", "ank1-thmzone", "ank2-thmzone", "ank3-thmzone", "ank4-thmzone", "ank5-thmzone";
 				k-po = <0x80>;
 				k-pu = <0x100>;
 				k-i = <0x01>;
@@ -1256,7 +1256,7 @@
 			cluster1-sensor@16 {
 				compatible = "sprd,cluster1-thermal";
 				#thermal-sensor-cells = <0x01>;
-				sensor-names = "prometheus6-thmzone\0prometheus7-thmzone";
+				sensor-names = "prometheus6-thmzone", "prometheus7-thmzone";
 				k-po = <0x80>;
 				k-pu = <0x100>;
 				k-i = <0x01>;
@@ -1268,7 +1268,7 @@
 			soc-sensor@17 {
 				compatible = "sprd,soc-thermal";
 				#thermal-sensor-cells = <0x01>;
-				sensor-names = "cluster0-thmzone\0cluster1-thmzone\0gpu-thmzone";
+				sensor-names = "cluster0-thmzone", "cluster1-thmzone", "gpu-thmzone";
 				k-po = <0xa4>;
 				k-pu = <0x148>;
 				k-i = <0x02>;
@@ -1279,7 +1279,7 @@
 			};
 
 			spi@64200000 {
-				compatible = "sprd,qogirl6-adi\0sprd,sharkl5-adi";
+				compatible = "sprd,qogirl6-adi", "sprd,sharkl5-adi";
 				reg = <0x00 0x64200000 0x00 0x100000>;
 				#address-cells = <0x01>;
 				#size-cells = <0x00>;
@@ -1297,13 +1297,13 @@
 					phandle = <0x42>;
 
 					watchdog@40 {
-						compatible = "sprd,sc2730-wdt\0sprd,sc27xx-wdt";
+						compatible = "sprd,sc2730-wdt", "sprd,sc27xx-wdt";
 						reg = <0x40>;
 						phandle = <0x12c>;
 					};
 
 					led-controller@180 {
-						compatible = "sprd,sc27xx-bltc\0sprd,sc2730-bltc";
+						compatible = "sprd,sc27xx-bltc", "sprd,sc2730-bltc";
 						#address-cells = <0x01>;
 						#size-cells = <0x00>;
 						reg = <0x180>;
@@ -1325,14 +1325,14 @@
 					};
 
 					rtc@200 {
-						compatible = "sprd,sc27xx-rtc\0sprd,sc2730-rtc";
+						compatible = "sprd,sc27xx-rtc", "sprd,sc2730-rtc";
 						reg = <0x200>;
 						interrupt-parent = <0x42>;
 						interrupts = <0x01 0x04>;
 					};
 
 					gpio@280 {
-						compatible = "sprd,sc27xx-eic\0sprd,sc2730-eic";
+						compatible = "sprd,sc27xx-eic", "sprd,sc2730-eic";
 						reg = <0x280>;
 						interrupt-parent = <0x42>;
 						interrupts = <0x04 0x04>;
@@ -1344,7 +1344,7 @@
 					};
 
 					efuse@300 {
-						compatible = "sprd,sc27xx-efuse\0sprd,sc2730-efuse";
+						compatible = "sprd,sc27xx-efuse", "sprd,sc2730-efuse";
 						reg = <0x300>;
 						#address-cells = <0x01>;
 						#size-cells = <0x01>;
@@ -1412,19 +1412,19 @@
 					};
 
 					typec@380 {
-						compatible = "sprd,sc27xx-typec\0sprd,sc2730-typec";
+						compatible = "sprd,sc27xx-typec", "sprd,sc2730-typec";
 						interrupt-parent = <0x42>;
 						interrupts = <0x08 0x04>;
 						reg = <0x380>;
 						mode = <0x02>;
 						nvmem-cells = <0x44 0x45>;
-						nvmem-cell-names = "typec_cc1_cal\0typec_cc2_cal";
+						nvmem-cell-names = "typec_cc1_cal", "typec_cc2_cal";
 						status = "okay";
 						phandle = <0x4c>;
 					};
 
 					fchg@400 {
-						compatible = "sprd,sc27xx-fast-chg\0sprd,sc2730-fast-charger";
+						compatible = "sprd,sc27xx-fast-chg", "sprd,sc2730-fast-charger";
 						reg = <0x400>;
 						interrupt-parent = <0x42>;
 						interrupts = <0x05 0x04>;
@@ -1435,49 +1435,49 @@
 					};
 
 					adc@504 {
-						compatible = "sprd,sc27xx-adc\0sprd,sc2730-adc";
+						compatible = "sprd,sc27xx-adc", "sprd,sc2730-adc";
 						reg = <0x504>;
 						interrupt-parent = <0x42>;
 						interrupts = <0x00 0x04>;
 						#io-channel-cells = <0x01>;
 						hwlocks = <0x43 0x04>;
 						nvmem-cells = <0x47 0x48>;
-						nvmem-cell-names = "big_scale_calib\0small_scale_calib";
+						nvmem-cell-names = "big_scale_calib", "small_scale_calib";
 						phandle = <0x4b>;
 					};
 
 					fgu@c00 {
-						compatible = "sprd,sc27xx-fgu\0sprd,sc2730-fgu";
+						compatible = "sprd,sc27xx-fgu", "sprd,sc2730-fgu";
 						reg = <0xc00>;
 						bat-detect-gpio = <0x49 0x03 0x00>;
 						nvmem-cell-names = "fgu_calib";
 						nvmem-cells = <0x4a>;
 						io-channels = <0x4b 0x00 0x4b 0x0e>;
-						io-channel-names = "bat-temp\0charge-vol";
+						io-channel-names = "bat-temp", "charge-vol";
 						interrupt-parent = <0x42>;
 						interrupts = <0x03 0x04>;
 						phandle = <0x12e>;
 					};
 
 					pd@e00 {
-						compatible = "sprd,sc27xx-pd\0sprd,sc2730-pd";
+						compatible = "sprd,sc27xx-pd", "sprd,sc2730-pd";
 						reg = <0xe00 0x380>;
 						interrupt-parent = <0x42>;
 						interrupts = <0x09 0x04>;
 						extcon = <0x4c>;
 						nvmem-cells = <0x4d 0x4e 0x4f>;
-						nvmem-cell-names = "pdrc_calib\0pddelta_calib\0pdref_calib";
+						nvmem-cell-names = "pdrc_calib", "pddelta_calib", "pdref_calib";
 						status = "disabled";
 						phandle = <0x12f>;
 					};
 
 					audio-codec@1000 {
-						compatible = "sprd,sc2730-audio-codec\0sprd,sc27xx-audio-codec";
+						compatible = "sprd,sc2730-audio-codec", "sprd,sc27xx-audio-codec";
 						#sound-dai-cells = <0x01>;
 						reg = <0x1000>;
 						sprd,syscon-pmu-apb = <0x0d>;
 						nvmem-cells = <0x50 0x51 0x4a>;
-						nvmem-cell-names = "aud_pabst_vcal_efuse\0neg_cp_efuse\0fgu_4p2_efuse";
+						nvmem-cell-names = "aud_pabst_vcal_efuse", "neg_cp_efuse", "fgu_4p2_efuse";
 						status = "okay";
 						hp-use-inter-pa = <0x01>;
 						fixed-sample-rate = <0xbb80 0xbb80 0xbb80>;
@@ -1494,7 +1494,7 @@
 					};
 
 					power-controller@1800 {
-						compatible = "sprd,sc27xx-regulator\0sprd,sc2730-regulator";
+						compatible = "sprd,sc27xx-regulator", "sprd,sc2730-regulator";
 
 						DCDC_CPU {
 							regulator-name = "vddcpu";
@@ -1777,12 +1777,12 @@
 					};
 
 					poweroff@1820 {
-						compatible = "sprd,sc27xx-poweroff\0sprd,sc2730-poweroff";
+						compatible = "sprd,sc27xx-poweroff", "sprd,sc2730-poweroff";
 						reg = <0x1820>;
 					};
 
 					tsensor@1b34 {
-						compatible = "sprd,sc27xx-tsensor\0sprd,sc2730-tsensor";
+						compatible = "sprd,sc27xx-tsensor", "sprd,sc2730-tsensor";
 						#thermal-sensor-cells = <0x01>;
 						reg = <0x1b34>;
 						phandle = <0xea>;
@@ -1799,12 +1799,12 @@
 					};
 
 					vibrator@1b90 {
-						compatible = "sprd,sc27xx-vibrator\0sprd,sc2730-vibrator";
+						compatible = "sprd,sc27xx-vibrator", "sprd,sc2730-vibrator";
 						reg = <0x1b90>;
 					};
 
 					hw_reset@1bc0 {
-						compatible = "sprd,sc27xx-7sreset\0sprd,sc2730-7sreset";
+						compatible = "sprd,sc27xx-7sreset", "sprd,sc2730-7sreset";
 						reg = <0x1bf8 0x1bc0>;
 					};
 				};
@@ -1821,17 +1821,17 @@
 			};
 
 			pwm@643f0000 {
-				compatible = "sprd,qogirl6-pwm\0sprd,sharkl5-pwm";
+				compatible = "sprd,qogirl6-pwm", "sprd,sharkl5-pwm";
 				reg = <0x00 0x643f0000 0x00 0x10000>;
 				status = "okay";
-				clock-names = "clk_parent\0clk_pwm0\0clk_pwm0_eb\0clk_pwm1\0clk_pwm1_eb\0clk_pwm2\0clk_pwm2_eb";
+				clock-names = "clk_parent", "clk_pwm0", "clk_pwm0_eb", "clk_pwm1", "clk_pwm1_eb", "clk_pwm2", "clk_pwm2_eb";
 				clocks = <0x04 0x32 0x06 0x0e 0x33 0x32 0x07 0x0e 0x34 0x32 0x08 0x0e 0x35>;
 				#pwm-cells = <0x02>;
 				phandle = <0x14e>;
 			};
 
 			topdvfsctrl@64014000 {
-				compatible = "sprd,qogirl6-topdvfs\0syscon";
+				compatible = "sprd,qogirl6-topdvfs", "syscon";
 				sprd,syscon-enable = <0x09>;
 				module-enable-cfg = <0x04 0x07>;
 				reg = <0x00 0x64014000 0x00 0x4000>;
@@ -2316,14 +2316,14 @@
 			};
 
 			timer@64470000 {
-				compatible = "sprd,qogirl6-timer\0sprd,sc9860-timer";
+				compatible = "sprd,qogirl6-timer", "sprd,sc9860-timer";
 				reg = <0x00 0x64470000 0x00 0x20>;
 				interrupts = <0x00 0x47 0x04>;
 				clocks = <0x77>;
 			};
 
 			timer@64470020 {
-				compatible = "sprd,qogirl6-suspend-timer\0sprd,sc9860-suspend-timer";
+				compatible = "sprd,qogirl6-suspend-timer", "sprd,sc9860-suspend-timer";
 				reg = <0x00 0x64470020 0x00 0x20>;
 				clocks = <0x77>;
 			};
@@ -2333,7 +2333,7 @@
 				reg = <0x00 0x644e0000 0x00 0x10000>;
 				interrupts = <0x00 0x4f 0x04>;
 				timeout-sec = <0x0c>;
-				clock-names = "enable\0rtc_enable";
+				clock-names = "enable", "rtc_enable";
 				clocks = <0x0e 0x38 0x0e 0x42>;
 			};
 
@@ -2453,7 +2453,7 @@
 				reg = <0x00 0x64740000 0x00 0x1000>;
 				syscon-names = "soft_rst";
 				syscons = <0x09 0x130 0x400>;
-				clock-names = "enable\0tck";
+				clock-names = "enable", "tck";
 				clocks = <0x0e 0x03 0x0e 0x02>;
 				hwlocks = <0x43 0x0a>;
 				hwlock-names = "djtag";
@@ -2462,11 +2462,11 @@
 				phandle = <0x153>;
 
 				aon-busmonitor@8 {
-					compatible = "sprd,qogirl6-busmonitor\0sprd,sharkl5pro-busmonitor";
+					compatible = "sprd,qogirl6-busmonitor", "sprd,sharkl5pro-busmonitor";
 					interrupts = <0x00 0x51 0x04>;
 					reg = <0x08>;
 					sprd,bm-num = <0x07>;
-					sprd,bm-name = "AP\0WTLCP\0AUDCP\0PUBCP\0USBOTG\0CM4\0WCN";
+					sprd,bm-name = "AP", "WTLCP", "AUDCP", "PUBCP", "USBOTG", "CM4", "WCN";
 					sprd,bm-type = <0x01 0x01 0x01 0x01 0x01 0x01 0x01>;
 					sprd,bm-dap = <0x00 0x01 0x02 0x03 0x04 0x05 0x08>;
 					sprd,bm-config = <0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01 0x00 0x01 0x01>;
@@ -2501,12 +2501,12 @@
 				reg = <0x00 0x64750000 0x00 0x4000>;
 				sprd,syscon-mm-ahb = <0x14>;
 				sprd,syscon-dsi-apb = <0x17>;
-				sprd,ch-name = "TRAINING\0WTL\0MADR\0TPIU\0DBUS\0WCN";
+				sprd,ch-name = "TRAINING", "WTL", "MADR", "TPIU", "DBUS", "WCN";
 				sprd,ch-index = <0x0f 0x01 0x00 0x02 0x03 0x04>;
 				sprd,dcfix;
 				sprd,mm;
 				status = "okay";
-				clock-names = "serdes_eb\0mm_eb\0ana_eb\0dsi_csi_test_eb\0cphy_cfg_eb";
+				clock-names = "serdes_eb", "mm_eb", "ana_eb", "dsi_csi_test_eb", "cphy_cfg_eb";
 				clocks = <0x0e 0x39 0x0e 0x08 0x0e 0x1b 0x0e 0x4c 0x0e 0x62>;
 				vddio-supply = <0x79>;
 				mipi-switch-en-gpios = <0x7a 0x37 0x00>;
@@ -2541,7 +2541,7 @@
 				syscon-names = "usb_uart_jtag_mux";
 				vdd-supply = <0x7c>;
 				sprd,vdd-voltage = <0x325aa0>;
-				pinctrl-names = "uart_inf_sel0\0uart_inf_sel1";
+				pinctrl-names = "uart_inf_sel0", "uart_inf_sel1";
 				pintcrl-0 = <0x7d>;
 				pintcrl-1 = <0x7e>;
 				phandle = <0x157>;
@@ -2560,7 +2560,7 @@
 				reg = <0x00 0x56480000 0x00 0x1000>;
 				sprd,syscon-agcp-ahb = <0x7f>;
 				sprd,vbc-phy-offset = <0x00>;
-				pinctrl-names = "vbc_iis3_0\0vbc_iism0_0\0vbc_iis_to_pad\0vbc_iis_to_aon_usb\0vbc_iism0_1\0vbc_iism0_3\0vbc_iis0_3\0vbc_iis1_3\0vbc_iis2_3\0vbc_iis3_3\0ap_iis0_3\0vbc_iis3_5\0audcp_iis0_1";
+				pinctrl-names = "vbc_iis3_0", "vbc_iism0_0", "vbc_iis_to_pad", "vbc_iis_to_aon_usb", "vbc_iism0_1", "vbc_iism0_3", "vbc_iis0_3", "vbc_iis1_3", "vbc_iis2_3", "vbc_iis3_3", "ap_iis0_3", "vbc_iis3_5", "audcp_iis0_1";
 				pinctrl-0 = <0x80>;
 				pinctrl-1 = <0x81>;
 				pinctrl-2 = <0x82>;
@@ -2601,7 +2601,7 @@
 				interrupts = <0x00 0xb4 0x04>;
 				#dma-cells = <0x01>;
 				#dma-channels = <0x20>;
-				clock-names = "enable\0ashb_eb";
+				clock-names = "enable", "ashb_eb";
 				clocks = <0x8e 0x06 0x8e 0x0d>;
 				phandle = <0xc0>;
 			};
@@ -2618,7 +2618,7 @@
 				sprd,syscon-agcp-ahb = <0x09>;
 				sprd,syscon-pmu-apb = <0x0d>;
 				syscons = <0x0d 0x850 0x08 0x0d 0x860 0xf000 0x0d 0x544 0x1f00 0x0d 0x544 0x1f0000 0x09 0x14c 0x20>;
-				syscon-names = "audcp_pmu_sleep_ctrl\0audcp_pmu_slp_status\0audcp_pmu_pwr_status4\0audcp_pmu_pwr_status3\0ap_access_ena";
+				syscon-names = "audcp_pmu_sleep_ctrl", "audcp_pmu_slp_status", "audcp_pmu_pwr_status4", "audcp_pmu_pwr_status3", "ap_access_ena";
 				sprd,dst = <0x05>;
 				sprd,channel = <0x82>;
 				sprd,sipc-name = "sipc0";
@@ -2705,7 +2705,7 @@
 			compatible = "sprd,ums9230-ap-clk";
 			reg = <0x00 0x20010000 0x00 0x1000>;
 			clocks = <0x04 0x28 0x29>;
-			clock-names = "ext-26m\0dphy-250m\0dphy-333m3";
+			clock-names = "ext-26m", "dphy-250m", "dphy-333m3";
 			#clock-cells = <0x01>;
 			phandle = <0x03>;
 		};
@@ -2714,7 +2714,7 @@
 			compatible = "sprd,ums9230-gpu-clk";
 			sprd,syscon = <0x23>;
 			syscons = <0x09 0x00 0x800 0x0d 0x2c4 0x2000000>;
-			syscon-names = "enable\0power";
+			syscon-names = "enable", "power";
 			clocks = <0x04>;
 			clock-names = "ext-26m";
 			#clock-cells = <0x01>;
@@ -2734,7 +2734,7 @@
 			compatible = "sprd,ums9230-mm-gate-clk";
 			sprd,syscon = <0x14>;
 			syscons = <0x09 0x00 0x200 0x0d 0x2e8 0x2000000>;
-			syscon-names = "enable\0power";
+			syscon-names = "enable", "power";
 			#clock-cells = <0x01>;
 			phandle = <0x0f>;
 		};
@@ -2743,7 +2743,7 @@
 			compatible = "sprd,ums9230-aonapb-clk";
 			reg = <0x00 0x64012000 0x00 0x1000>;
 			clocks = <0x04 0x91 0x77>;
-			clock-names = "ext-26m\0rco-100m\0ext-32k";
+			clock-names = "ext-26m", "rco-100m", "ext-32k";
 			#clock-cells = <0x01>;
 			phandle = <0x32>;
 		};
@@ -2779,7 +2779,7 @@
 		};
 
 		funnel@7c002000 {
-			compatible = "arm,coresight-funnel\0arm,primecell";
+			compatible = "arm,coresight-funnel", "arm,primecell";
 			reg = <0x00 0x7c002000 0x00 0x1000>;
 			clocks = <0x04>;
 			clock-names = "apb_pclk";
@@ -2810,7 +2810,7 @@
 		};
 
 		etb@7c003000 {
-			compatible = "arm,coresight-tmc\0arm,primecell";
+			compatible = "arm,coresight-tmc", "arm,primecell";
 			reg = <0x00 0x7c003000 0x00 0x1000>;
 			clocks = <0x04>;
 			clock-names = "apb_pclk";
@@ -2827,7 +2827,7 @@
 		};
 
 		funnel@7e001000 {
-			compatible = "arm,coresight-funnel\0arm,primecell";
+			compatible = "arm,coresight-funnel", "arm,primecell";
 			reg = <0x00 0x7e001000 0x00 0x1000>;
 			clocks = <0x04>;
 			clock-names = "apb_pclk";
@@ -2888,7 +2888,7 @@
 		};
 
 		etf@7e002000 {
-			compatible = "arm,coresight-tmc\0arm,primecell";
+			compatible = "arm,coresight-tmc", "arm,primecell";
 			reg = <0x00 0x7e002000 0x00 0x1000>;
 			clocks = <0x04>;
 			clock-names = "apb_pclk";
@@ -2912,7 +2912,7 @@
 		};
 
 		etf@7e003000 {
-			compatible = "arm,coresight-tmc\0arm,primecell";
+			compatible = "arm,coresight-tmc", "arm,primecell";
 			reg = <0x00 0x7e003000 0x00 0x1000>;
 			clocks = <0x04>;
 			clock-names = "apb_pclk";
@@ -2936,7 +2936,7 @@
 		};
 
 		funnel@7e004000 {
-			compatible = "arm,coresight-funnel\0arm,primecell";
+			compatible = "arm,coresight-funnel", "arm,primecell";
 			reg = <0x00 0x7e004000 0x00 0x1000>;
 			clocks = <0x04>;
 			clock-names = "apb_pclk";
@@ -2977,7 +2977,7 @@
 		};
 
 		funnel@7e005000 {
-			compatible = "arm,coresight-funnel\0arm,primecell";
+			compatible = "arm,coresight-funnel", "arm,primecell";
 			reg = <0x00 0x7e005000 0x00 0x1000>;
 			clocks = <0x04>;
 			clock-names = "apb_pclk";
@@ -3038,11 +3038,11 @@
 		};
 
 		etm@7f040000 {
-			compatible = "arm,coresight-etm4x\0arm,primecell";
+			compatible = "arm,coresight-etm4x", "arm,primecell";
 			reg = <0x00 0x7f040000 0x00 0x1000>;
 			cpu = <0xa7>;
 			clocks = <0x04 0x32 0x21 0x06 0x09>;
-			clock-names = "apb_pclk\0clk_cs\0cs_src";
+			clock-names = "apb_pclk", "clk_cs", "cs_src";
 			phandle = <0xb7>;
 
 			port {
@@ -3055,11 +3055,11 @@
 		};
 
 		etm@7f140000 {
-			compatible = "arm,coresight-etm4x\0arm,primecell";
+			compatible = "arm,coresight-etm4x", "arm,primecell";
 			reg = <0x00 0x7f140000 0x00 0x1000>;
 			cpu = <0xa9>;
 			clocks = <0x04 0x32 0x21 0x06 0x09>;
-			clock-names = "apb_pclk\0clk_cs\0cs_src";
+			clock-names = "apb_pclk", "clk_cs", "cs_src";
 			phandle = <0xb8>;
 
 			port {
@@ -3072,11 +3072,11 @@
 		};
 
 		etm@7f240000 {
-			compatible = "arm,coresight-etm4x\0arm,primecell";
+			compatible = "arm,coresight-etm4x", "arm,primecell";
 			reg = <0x00 0x7f240000 0x00 0x1000>;
 			cpu = <0xab>;
 			clocks = <0x04 0x32 0x21 0x06 0x09>;
-			clock-names = "apb_pclk\0clk_cs\0cs_src";
+			clock-names = "apb_pclk", "clk_cs", "cs_src";
 			phandle = <0xb9>;
 
 			port {
@@ -3089,11 +3089,11 @@
 		};
 
 		etm@7f340000 {
-			compatible = "arm,coresight-etm4x\0arm,primecell";
+			compatible = "arm,coresight-etm4x", "arm,primecell";
 			reg = <0x00 0x7f340000 0x00 0x1000>;
 			cpu = <0xad>;
 			clocks = <0x04 0x32 0x21 0x06 0x09>;
-			clock-names = "apb_pclk\0clk_cs\0cs_src";
+			clock-names = "apb_pclk", "clk_cs", "cs_src";
 			phandle = <0xba>;
 
 			port {
@@ -3106,11 +3106,11 @@
 		};
 
 		etm@7f440000 {
-			compatible = "arm,coresight-etm4x\0arm,primecell";
+			compatible = "arm,coresight-etm4x", "arm,primecell";
 			reg = <0x00 0x7f440000 0x00 0x1000>;
 			cpu = <0xaf>;
 			clocks = <0x04 0x32 0x21 0x06 0x09>;
-			clock-names = "apb_pclk\0clk_cs\0cs_src";
+			clock-names = "apb_pclk", "clk_cs", "cs_src";
 			phandle = <0xbb>;
 
 			port {
@@ -3123,11 +3123,11 @@
 		};
 
 		etm@7f540000 {
-			compatible = "arm,coresight-etm4x\0arm,primecell";
+			compatible = "arm,coresight-etm4x", "arm,primecell";
 			reg = <0x00 0x7f540000 0x00 0x1000>;
 			cpu = <0xb1>;
 			clocks = <0x04 0x32 0x21 0x06 0x09>;
-			clock-names = "apb_pclk\0clk_cs\0cs_src";
+			clock-names = "apb_pclk", "clk_cs", "cs_src";
 			phandle = <0xbc>;
 
 			port {
@@ -3140,11 +3140,11 @@
 		};
 
 		etm@7f640000 {
-			compatible = "arm,coresight-etm4x\0arm,primecell";
+			compatible = "arm,coresight-etm4x", "arm,primecell";
 			reg = <0x00 0x7f640000 0x00 0x1000>;
 			cpu = <0xb3>;
 			clocks = <0x04 0x32 0x21 0x06 0x09>;
-			clock-names = "apb_pclk\0clk_cs\0cs_src";
+			clock-names = "apb_pclk", "clk_cs", "cs_src";
 			phandle = <0xbd>;
 
 			port {
@@ -3157,11 +3157,11 @@
 		};
 
 		etm@7f740000 {
-			compatible = "arm,coresight-etm4x\0arm,primecell";
+			compatible = "arm,coresight-etm4x", "arm,primecell";
 			reg = <0x00 0x7f740000 0x00 0x1000>;
 			cpu = <0xb5>;
 			clocks = <0x04 0x32 0x21 0x06 0x09>;
-			clock-names = "apb_pclk\0clk_cs\0cs_src";
+			clock-names = "apb_pclk", "clk_cs", "cs_src";
 			phandle = <0xbe>;
 
 			port {
@@ -3185,7 +3185,7 @@
 		compatible = "sprd,qogirl6-pcm-platform";
 		#sound-dai-cells = <0x00>;
 		dmas = <0xc0 0x01 0xc0 0x02 0xc0 0x03 0xc0 0x04 0xc0 0x05 0xc0 0x06 0xc0 0x07 0xc0 0x08 0xc0 0x09 0xc0 0x0a 0xc0 0x0b 0xc0 0x0c 0xc0 0x0d 0xc0 0x0e 0xc0 0x0f 0xc0 0x10 0xc0 0x09 0xc0 0x09 0xc0 0x0b 0xc0 0x0e 0xc0 0x13 0xc0 0x14>;
-		dma-names = "normal_p_l\0normal_p_r\0normal_c_l\0normal_c_r\0normal23_p_l\0normal23_p_r\0normal23_c_l\0normal23_c_r\0dspcap_c\0a2dppcm_p\0voice_c\0fast_p\0loop_c\0loop_p\0voip_c\0voip_p\0dspfmcap_c\0dspbtscocap_c\0recognise_c\0voice_pcm_p\0hifi_p\0hifi_fast_p";
+		dma-names = "normal_p_l", "normal_p_r", "normal_c_l", "normal_c_r", "normal23_p_l", "normal23_p_r", "normal23_c_l", "normal23_c_r", "dspcap_c", "a2dppcm_p", "voice_c", "fast_p", "loop_c", "loop_p", "voip_c", "voip_p", "dspfmcap_c", "dspbtscocap_c", "recognise_c", "voice_pcm_p", "hifi_p", "hifi_fast_p";
 		phandle = <0xd4>;
 	};
 
@@ -3193,7 +3193,7 @@
 		compatible = "sprd,qogirl6-compress-platform";
 		#sound-dai-cells = <0x00>;
 		dmas = <0xc0 0x11 0xc0 0x12>;
-		dma-names = "compr_dma_stage0\0compr_dma_stage1";
+		dma-names = "compr_dma_stage0", "compr_dma_stage1";
 		phandle = <0xd6>;
 	};
 
@@ -3215,7 +3215,7 @@
 	};
 
 	audio-mem-mgr {
-		compatible = "sprd,audio-mem-sharkl5\0sprd,audio-mem-sharkl5pro";
+		compatible = "sprd,audio-mem-sharkl5", "sprd,audio-mem-sharkl5pro";
 		ddr32-ap-dsp-map-offset = <0x00>;
 		sprd,ddr32-dma = <0x94100000 0x200000>;
 		sprd,ddr32-dspmemdump = <0x94300000 0x80000>;
@@ -3299,7 +3299,7 @@
 	audiocp_boot {
 		compatible = "sprd,audcp-boot";
 		syscons = <0x0d 0x3d0 0x3000000 0x0d 0x3d4 0x3000000 0x0d 0x818 0x08 0x0d 0xb88 0x400000 0x0d 0xb98 0x400000 0x0d 0xba8 0x400000 0x0d 0x544 0x1f00 0x0d 0x544 0x1f0000 0x0d 0xd4 0xffff 0x09 0x78 0xffff 0x09 0x140 0xffff 0x09 0x144 0x01>;
-		syscon-names = "sysshutdown\0coreshutdown\0deepsleep\0corereset\0sysreset\0reset_sel\0sysstatus\0corestatus\0sleepstatus\0bootprotect\0bootvector\0bootaddress_sel";
+		syscon-names = "sysshutdown", "coreshutdown", "deepsleep", "corereset", "sysreset", "reset_sel", "sysstatus", "corestatus", "sleepstatus", "bootprotect", "bootvector", "bootaddress_sel";
 	};
 
 	apipe-pcm {
@@ -3355,7 +3355,7 @@
 	};
 
 	efuse@65014c00 {
-		compatible = "sprd,sharkl5-cache-efuse\0sprd,qogirl6-cache-efuse";
+		compatible = "sprd,sharkl5-cache-efuse", "sprd,qogirl6-cache-efuse";
 		#address-cells = <0x01>;
 		#size-cells = <0x01>;
 		reg = <0x00 0x65014c00 0x00 0x3ff>;
@@ -4166,7 +4166,7 @@
 		sprd,coefficient = <0xd7f28>;
 		sprd,irq-threshold-button = <0x04>;
 		nvmem-cells = <0x46 0xd2>;
-		nvmem-cell-names = "hp_adc_fir_calib\0hp_adc_sec_calib";
+		nvmem-cell-names = "hp_adc_fir_calib", "hp_adc_sec_calib";
 		phandle = <0xd3>;
 
 		sprd,headset-button@0 {
@@ -4192,7 +4192,7 @@
 		compatible = "sprd,vbc-v4-codec-sc2730";
 		status = "disabled";
 		sprd-audio-card,name = "sprdphone-sc2730";
-		sprd-audio-card,routing = "HPMIC Pin\0HP Mic Jack\0MIC Pin\0Mic Jack\0MIC2 Pin\0Aux Mic Jack\0HeadPhone Jack\0HP Pin\0Ext Spk\0HP Pin\0Ext Spk1\0HP Pin\0Ext Spk\0SPK Pin\0Ext Spk1\0SPK Pin\0Ext Ear\0EAR Pin\0Ext Ear\0SPK Pin\0Ext Ear\0HP Pin";
+		sprd-audio-card,routing = "HPMIC Pin", "HP Mic Jack", "MIC Pin", "Mic Jack", "MIC2 Pin", "Aux Mic Jack", "HeadPhone Jack", "HP Pin", "Ext Spk", "HP Pin", "Ext Spk1", "HP Pin", "Ext Spk", "SPK Pin", "Ext Spk1", "SPK Pin", "Ext Ear", "EAR Pin", "Ext Ear", "SPK Pin", "Ext Ear", "HP Pin";
 		sprd-audio-card,headset = <0xd3>;
 		sprd,syscon-agcp-ahb = <0x7f>;
 		phandle = <0x16f>;
@@ -5404,7 +5404,7 @@
 		compatible = "sprd,sharkl5-pcm-platform";
 		#sound-dai-cells = <0x00>;
 		dmas = <0xda 0x05 0xda 0x06>;
-		dma-names = "iis0_tx\0iis0_rx";
+		dma-names = "iis0_tx", "iis0_rx";
 		sprd,dma-2stage-usecase = <0x02>;
 		sprd,node-count-2stage-level-1 = <0x01>;
 		sprd,syscon-pmu-apb = <0x0d>;
@@ -5646,7 +5646,7 @@
 	};
 
 	sprd-sensorhub {
-		compatible = "sprd,qogirl6-sensorhub\0sprd,sensor-hub";
+		compatible = "sprd,qogirl6-sensorhub", "sprd,sensor-hub";
 	};
 
 	sprd-map-user {
@@ -5832,7 +5832,7 @@
 			sprd,cluster-voltage-scale = <0x318 0xfffff8b4 0x62e 0xfffffe6a>;
 			sprd,efuse-switch = <0x00>;
 			sprd,hotplug-period = <0x0a>;
-			sprd,min-cpufreq = "\0\t`";
+			sprd,min-cpufreq = "", "\t`";
 			sprd,min-cpunum = <0x01>;
 			sprd,core-base = <0xfeb>;
 			sprd,cluster-base = <0xf33>;
@@ -5899,7 +5899,7 @@
 		scproc@62010000 {
 			sprd,name = "pmic";
 			syscons = <0x09 0xff 0x00 0x0d 0xff 0x100000 0x09 0x8c 0x01 0x09 0xff 0x00 0x09 0xff 0x00>;
-			syscon-names = "shutdown\0deepsleep\0corereset\0sysreset\0getstatus";
+			syscon-names = "shutdown", "deepsleep", "corereset", "sysreset", "getstatus";
 			reg = <0x00 0x62010000 0x00 0x4e000 0x00 0x62010000 0x00 0x4e000>;
 			sprd,aon_iram = <0x65003400 0xa000>;
 			#address-cells = <0x01>;
@@ -5922,7 +5922,7 @@
 			sprd,decoup = "cproc-use-decoup";
 			sprd,name = "cptl";
 			syscons = <0x0d 0x330 0x2000000 0x0d 0x818 0x02 0x09 0x174 0x400 0x0d 0xb98 0x800 0x09 0xff 0x00 0x0d 0xb88 0x18>;
-			syscon-names = "shutdown\0deepsleep\0corereset\0sysreset\0getstatus\0dspreset";
+			syscon-names = "shutdown", "deepsleep", "corereset", "sysreset", "getstatus", "dspreset";
 			reg = <0x00 0x65003400 0x00 0x1000>;
 			phandle = <0x19d>;
 		};

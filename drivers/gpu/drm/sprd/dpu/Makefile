@@ -1,5 +1,7 @@
 ifdef CONFIG_ARM64
 KBUILD_CFLAGS += -mstrict-align
+subdir-ccflags-y += -mstrict-align
+
 endif
 
 obj-y += dpu_r2p0.o

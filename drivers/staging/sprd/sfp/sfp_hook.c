@@ -169,7 +169,7 @@ static struct nf_hook_ops ipv6_sfp_conntrack_ops[] __read_mostly = {
 	}
 };
 
-int __init nf_sfp_conntrack_init(void)
+int __initdata nf_sfp_conntrack_init(void)
 {
 	int ret;
 

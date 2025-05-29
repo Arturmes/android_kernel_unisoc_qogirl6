@@ -60,7 +60,7 @@
 			};
 
 			fingerprint@0 {
-				compatible = "microarray,afs121";
+				compatible = "sunwave,afs121";
 				fpint-gpios = <&eic_async 29 0>;
 			};
 
