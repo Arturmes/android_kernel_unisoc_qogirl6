@@ -1296,14 +1296,6 @@ config TOUCHSCREEN_HIMAX_CHIPSET
 
 	  If unsure, say N.
 
-config TOUCHSCREEN_SS_ENABLED
-	bool "Samsung ts enabled node"
-	default n
-	help
-	  in Samsung project we create node /sys/class/sec/tsp/input/enabled for ts suspend
-
-	  If unsure, say N.
-
 source "drivers/input/touchscreen/hxchipset/Kconfig"
 
 endif
