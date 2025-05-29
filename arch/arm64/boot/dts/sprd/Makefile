@@ -11,14 +11,10 @@ dtbo-$(CONFIG_ARCH_SPRD) += \
 	m168-overlay-dvt.dtbo \
 	m168-overlay-pvt.dtbo
 
-#sp9863a-3h10-overlay.dtbo-base := sp9863a.dtb
-#sp9863a-1h10-overlay.dtbo-base := sp9863a.dtb
-#sp9863a-1h10_go-overlay.dtbo-base := sp9863a.dtb
 m168-overlay.dtbo-base := sp9863a.dtb
 m168-overlay-evt.dtbo-base := sp9863a.dtb
 m168-overlay-dvt.dtbo-base := sp9863a.dtb
 m168-overlay-pvt.dtbo-base := sp9863a.dtb
-#sp9863a-25c10_go-overlay.dtbo-base := sp9863a.dtb
 endif
 
 ifeq ($(BSP_BUILD_FAMILY),sharkl5Pro)
@@ -117,4 +113,4 @@ endif #//BSP_BUILD_DT_OVERLAY
 
 always		:= $(dtb-y) $(dtbo-y)
 subdir-y	:= $(dts-dirs)
-clean-files	:= *.dtb *.dtbo
+clean-files	:= *.dtb *.dtbo *.reverse.dts

@@ -17,6 +17,5 @@ config SPRD_DATA_TRANSPORTER
 	help
 	  The data transporter for SC9650 miniAP.
 
-source "drivers/staging/sprd/sfp/Kconfig"
 source "drivers/staging/sprd/debug_log/Kconfig"
 
