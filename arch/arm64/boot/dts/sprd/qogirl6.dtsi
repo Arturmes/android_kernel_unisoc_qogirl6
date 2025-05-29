@@ -62,7 +62,7 @@
 				clock-names = "enable", "uart", "source";
 				clocks = <&apapb_gate CLK_UART0_EB>,
 					<&ap_clk CLK_AP_UART0>, <&ext_26m>;
-				status = "disabled";
+				status = "okay";
 			};
 
 			uart1: serial@0x200b0000 {
@@ -73,7 +73,7 @@
 				clock-names = "enable", "uart", "source";
 				clocks = <&apapb_gate CLK_UART1_EB>,
 					<&ap_clk CLK_AP_UART1>, <&ext_26m>;
-				status = "disabled";
+				status = "okay";
 			};
 
 			uart2: serial@0x200c0000 {
@@ -84,7 +84,7 @@
 				clock-names = "enable", "uart", "source";
 				clocks = <&apapb_gate CLK_UART2_EB>,
 					<&ap_clk CLK_AP_UART2>, <&ext_26m>;
-				status = "disabled";
+				status = "okay";
 			};
 
 			i2c0: i2c@0x200d0000 {
@@ -159,7 +159,7 @@
 				sprd,hw_port = <0>;
 				sprd,syscon-ap-apb = <&ap_apb_regs>;
 				#sound-dai-cells = <0>;
-				status = "disable";
+				status = "okay";
 				clock-names = "clk_iis0";
 				clocks = <&ap_clk CLK_AP_IIS0>;
 			};
@@ -223,21 +223,21 @@
 				interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
 				#size-cells = <0>;
-				status = "disabled";
+				status = "okay";
 			};
 
 			sdio3: sdio@201d0000 {
 				compatible = "sprd,sdhc-r11p1";
 				reg = <0 0x201d0000 0 0x1000>;
 				interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>;
-				status = "disabled";
+				status = "okay";
 			};
 
 			sdio0: sdio@201a0000 {
 				compatible = "sprd,sdhc-r11p1";
 				reg = <0 0x201a0000 0 0x1000>;
 				interrupts = <GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>;
-				status = "disabled";
+				status = "okay";
 				syscons = <&aon_apb_regs REG_AON_APB_AP_SDIO0_PHY_CTRL MASK_AON_APB_AP_SDIO0_CARD_PRESENT_32K>,
 					  <&aon_apb_regs REG_AON_APB_AP_SDIO0_PHY_CTRL MASK_AON_APB_AP_SDIO0_CARD_PROTECT_32K>,
 					  <&aon_apb_regs REG_AON_APB_AP_SDIO0_PHY_CTRL MASK_AON_APB_AP_SDIO0_CARDDET_DBNC_EN_32K>,
@@ -414,7 +414,7 @@
 				sprd,iova-base = <0x20000000>;
 				sprd,iova-size = <0x10000000>;
 				reg_name = "mmu_reg";
-				status = "disable";
+				status = "okay";
 				#iommu-cells = <0>;
 			};
 
@@ -432,7 +432,7 @@
 					"aon_apb_eb";
 					iommus = <&iommu_jpg>;
 					jpg_qos = <&jpg_qos>;
-				status = "disabled";
+				status = "okay";
 			};
 
 			iommu_jpg: iommu@36000300 {
@@ -441,7 +441,7 @@
 				sprd,iova-base = <0x60000000>;
 				sprd,iova-size = <0x10000000>;
 				reg_name = "mmu_reg";
-				status = "disabled";
+				status = "okay";
 				#iommu-cells = <0>;
 			};
 
@@ -846,7 +846,7 @@
 				sprd,iova-base = <0x30000000>;
 				sprd,iova-size = <0x10000000>;
 				reg_name = "mmu_reg";
-				status = "disabled";
+				status = "okay";
 				#iommu-cells = <0>;
 			};
 
@@ -857,7 +857,7 @@
 				syscon-names = "reset";
 				interrupts = <GIC_SPI 30 IRQ_TYPE_LEVEL_HIGH>,
 					<GIC_SPI 31 IRQ_TYPE_LEVEL_HIGH>;
-				status = "disabled";
+				status = "okay";
 
 				sprd,ip = "sprd,dsi-ctrl", "r3p1";
 				sprd,soc = "qogirl6";
