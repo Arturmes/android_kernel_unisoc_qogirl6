@@ -1202,5 +1202,5 @@
 	sprd,pcm_cycle = <1>;
 	sprd,tx_watermark = <12>;
 	sprd,rx_watermark = <20>;
-	status = "disable";
+	status = "okay";
 };
