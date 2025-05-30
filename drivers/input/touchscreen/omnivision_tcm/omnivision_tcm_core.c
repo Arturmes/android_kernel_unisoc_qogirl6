@@ -3471,111 +3471,111 @@ static int ovt_tcm_suspend(struct device *dev)
 }
 #endif
 
-#ifdef CONFIG_FB
-static int ovt_tcm_early_suspend(struct device *dev)
-{
-	int retval;
-	struct ovt_tcm_module_handler *mod_handler;
-	struct ovt_tcm_hcd *tcm_hcd = dev_get_drvdata(dev);
-
-	if (tcm_hcd->in_suspend  || tcm_hcd->ovt_tcm_driver_removing)
-		return 0;
-
-#ifdef WATCHDOG_SW
-	tcm_hcd->update_watchdog(tcm_hcd, false);
-#endif
-
-	if (IS_NOT_FW_MODE(tcm_hcd->id_info.mode) ||
-			tcm_hcd->app_status != APP_STATUS_OK) {
-		LOGN(tcm_hcd->pdev->dev.parent,
-				"Identifying mode = 0x%02x\n",
-				tcm_hcd->id_info.mode);
-		return 0;
-	}
-//prize deleted by wangfei for not enter sleep mode 20220324 start
-/* 	if (!tcm_hcd->wakeup_gesture_enabled) {
-		retval = tcm_hcd->sleep(tcm_hcd, true);
-		if (retval < 0) {
-			LOGE(tcm_hcd->pdev->dev.parent,
-					"Failed to enter deep sleep\n");
-			return retval;
-		}
-	} */
-//prize deleted by wangfei for not enter sleep mode 20220324 end
-	touch_early_suspend(tcm_hcd);
-
-	mutex_lock(&mod_pool.mutex);
-
-	if (!list_empty(&mod_pool.list)) {
-		list_for_each_entry(mod_handler, &mod_pool.list, link) {
-			if (!mod_handler->insert &&
-					!mod_handler->detach &&
-					(mod_handler->mod_cb->early_suspend))
-				mod_handler->mod_cb->early_suspend(tcm_hcd);
-		}
-	}
-
-	mutex_unlock(&mod_pool.mutex);
-
-	return 0;
-}
-
-static int ovt_tcm_fb_notifier_cb(struct notifier_block *nb,
-		unsigned long action, void *data)
-{
-	int retval;
-	int *transition;
-	struct fb_event *evdata = data;
-	struct ovt_tcm_hcd *tcm_hcd =
-			container_of(nb, struct ovt_tcm_hcd, fb_notifier);
-
-	retval = 0;
-	if (evdata && evdata->data && tcm_hcd) {
-		transition = evdata->data;
-
-		if (atomic_read(&tcm_hcd->firmware_flashing) &&
-				*transition == FB_BLANK_POWERDOWN) {
-
-			retval = wait_event_interruptible_timeout(
-				tcm_hcd->reflash_wq,
-				!atomic_read(&tcm_hcd->firmware_flashing),
-				msecs_to_jiffies(RESPONSE_TIMEOUT_MS)
-				);
-			if (retval == 0) {
-				LOGE(tcm_hcd->pdev->dev.parent,
-						"Timed out waiting for completion of flashing firmware\n");
-				atomic_set(&tcm_hcd->firmware_flashing, 0);
-				return -EIO;
-			} else {
-				retval = 0;
-			}
-		}
-
-		if (action == FB_EARLY_EVENT_BLANK &&
-				*transition == FB_BLANK_POWERDOWN)
-			retval = ovt_tcm_early_suspend(&tcm_hcd->pdev->dev);
-		else if (action == FB_EVENT_BLANK) {
-			if (*transition == FB_BLANK_POWERDOWN) {
-				retval = ovt_tcm_suspend(&tcm_hcd->pdev->dev);
-				tcm_hcd->fb_ready = 0;
-			} else if (*transition == FB_BLANK_UNBLANK) {
-#ifndef RESUME_EARLY_UNBLANK
-				retval = ovt_tcm_resume(&tcm_hcd->pdev->dev);
-				tcm_hcd->fb_ready++;
-#endif
-			}
-		} else if (action == FB_EARLY_EVENT_BLANK &&
-				*transition == FB_BLANK_UNBLANK) {
-#ifdef RESUME_EARLY_UNBLANK
-				retval = ovt_tcm_resume(&tcm_hcd->pdev->dev);
-				tcm_hcd->fb_ready++;
-#endif
-		}
-	}
-
-	return 0;
-}
-#endif
+// #ifdef CONFIG_FB
+// static int ovt_tcm_early_suspend(struct device *dev)
+// {
+// 	int retval;
+// 	struct ovt_tcm_module_handler *mod_handler;
+// 	struct ovt_tcm_hcd *tcm_hcd = dev_get_drvdata(dev);
+//
+// 	if (tcm_hcd->in_suspend  || tcm_hcd->ovt_tcm_driver_removing)
+// 		return 0;
+//
+// #ifdef WATCHDOG_SW
+// 	tcm_hcd->update_watchdog(tcm_hcd, false);
+// #endif
+//
+// 	if (IS_NOT_FW_MODE(tcm_hcd->id_info.mode) ||
+// 			tcm_hcd->app_status != APP_STATUS_OK) {
+// 		LOGN(tcm_hcd->pdev->dev.parent,
+// 				"Identifying mode = 0x%02x\n",
+// 				tcm_hcd->id_info.mode);
+// 		return 0;
+// 	}
+// //prize deleted by wangfei for not enter sleep mode 20220324 start
+// /* 	if (!tcm_hcd->wakeup_gesture_enabled) {
+// 		retval = tcm_hcd->sleep(tcm_hcd, true);
+// 		if (retval < 0) {
+// 			LOGE(tcm_hcd->pdev->dev.parent,
+// 					"Failed to enter deep sleep\n");
+// 			return retval;
+// 		}
+// 	} */
+// //prize deleted by wangfei for not enter sleep mode 20220324 end
+// 	touch_early_suspend(tcm_hcd);
+//
+// 	mutex_lock(&mod_pool.mutex);
+//
+// 	if (!list_empty(&mod_pool.list)) {
+// 		list_for_each_entry(mod_handler, &mod_pool.list, link) {
+// 			if (!mod_handler->insert &&
+// 					!mod_handler->detach &&
+// 					(mod_handler->mod_cb->early_suspend))
+// 				mod_handler->mod_cb->early_suspend(tcm_hcd);
+// 		}
+// 	}
+//
+// 	mutex_unlock(&mod_pool.mutex);
+//
+// 	return 0;
+// }
+//
+// static int ovt_tcm_fb_notifier_cb(struct notifier_block *nb,
+// 		unsigned long action, void *data)
+// {
+// 	int retval;
+// 	int *transition;
+// 	struct fb_event *evdata = data;
+// 	struct ovt_tcm_hcd *tcm_hcd =
+// 			container_of(nb, struct ovt_tcm_hcd, fb_notifier);
+//
+// 	retval = 0;
+// 	if (evdata && evdata->data && tcm_hcd) {
+// 		transition = evdata->data;
+//
+// 		if (atomic_read(&tcm_hcd->firmware_flashing) &&
+// 				*transition == FB_BLANK_POWERDOWN) {
+//
+// 			retval = wait_event_interruptible_timeout(
+// 				tcm_hcd->reflash_wq,
+// 				!atomic_read(&tcm_hcd->firmware_flashing),
+// 				msecs_to_jiffies(RESPONSE_TIMEOUT_MS)
+// 				);
+// 			if (retval == 0) {
+// 				LOGE(tcm_hcd->pdev->dev.parent,
+// 						"Timed out waiting for completion of flashing firmware\n");
+// 				atomic_set(&tcm_hcd->firmware_flashing, 0);
+// 				return -EIO;
+// 			} else {
+// 				retval = 0;
+// 			}
+// 		}
+//
+// 		if (action == FB_EARLY_EVENT_BLANK &&
+// 				*transition == FB_BLANK_POWERDOWN)
+// 			retval = ovt_tcm_early_suspend(&tcm_hcd->pdev->dev);
+// 		else if (action == FB_EVENT_BLANK) {
+// 			if (*transition == FB_BLANK_POWERDOWN) {
+// 				retval = ovt_tcm_suspend(&tcm_hcd->pdev->dev);
+// 				tcm_hcd->fb_ready = 0;
+// 			} else if (*transition == FB_BLANK_UNBLANK) {
+// #ifndef RESUME_EARLY_UNBLANK
+// 				retval = ovt_tcm_resume(&tcm_hcd->pdev->dev);
+// 				tcm_hcd->fb_ready++;
+// #endif
+// 			}
+// 		} else if (action == FB_EARLY_EVENT_BLANK &&
+// 				*transition == FB_BLANK_UNBLANK) {
+// #ifdef RESUME_EARLY_UNBLANK
+// 				retval = ovt_tcm_resume(&tcm_hcd->pdev->dev);
+// 				tcm_hcd->fb_ready++;
+// #endif
+// 		}
+// 	}
+//
+// 	return 0;
+// }
+// #endif
 
 static int ovt_tcm_check_f35(struct ovt_tcm_hcd *tcm_hcd)
 {
@@ -3910,14 +3910,14 @@ static int ovt_tcm_probe(struct platform_device *pdev)
 		}
 	}
 
-#ifdef CONFIG_FB
-	tcm_hcd->fb_notifier.notifier_call = ovt_tcm_fb_notifier_cb;
-	retval = fb_register_client(&tcm_hcd->fb_notifier);
-	if (retval < 0) {
-		LOGE(tcm_hcd->pdev->dev.parent,
-				"Failed to register FB notifier client\n");
-	}
-#endif
+// #ifdef CONFIG_FB
+// 	tcm_hcd->fb_notifier.notifier_call = ovt_tcm_fb_notifier_cb;
+// 	retval = fb_register_client(&tcm_hcd->fb_notifier);
+// 	if (retval < 0) {
+// 		LOGE(tcm_hcd->pdev->dev.parent,
+// 				"Failed to register FB notifier client\n");
+// 	}
+// #endif
 
 
 #ifdef REPORT_NOTIFIER
@@ -4009,9 +4009,9 @@ err_enable_irq:
 
 err_create_run_kthread:
 #endif
-#ifdef CONFIG_FB
-	fb_unregister_client(&tcm_hcd->fb_notifier);
-#endif
+// #ifdef CONFIG_FB
+// 	fb_unregister_client(&tcm_hcd->fb_notifier);
+// #endif
 
 err_sysfs_create_dynamic_config_file:
 	for (idx--; idx >= 0; idx--) {
@@ -4119,9 +4119,9 @@ static int ovt_tcm_remove(struct platform_device *pdev)
 	kthread_stop(tcm_hcd->notifier_thread);
 #endif
 
-#ifdef CONFIG_FB
-	fb_unregister_client(&tcm_hcd->fb_notifier);
-#endif
+// #ifdef CONFIG_FB
+// 	fb_unregister_client(&tcm_hcd->fb_notifier);
+// #endif
 
 	for (idx = 0; idx < ARRAY_SIZE(dynamic_config_attrs); idx++) {
 		sysfs_remove_file(tcm_hcd->dynamnic_config_sysfs_dir,
@@ -4171,10 +4171,10 @@ static void ovt_tcm_shutdown(struct platform_device *pdev)
 
 #ifdef CONFIG_PM
 static const struct dev_pm_ops ovt_tcm_dev_pm_ops = {
-#ifndef CONFIG_FB
-	.suspend = ovt_tcm_suspend,
-	.resume = ovt_tcm_resume,
-#endif
+// #ifndef CONFIG_FB
+// 	.suspend = ovt_tcm_suspend,
+// 	.resume = ovt_tcm_resume,
+// #endif
 };
 #endif
 
