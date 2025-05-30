@@ -17,6 +17,8 @@ source drivers/input/touchscreen/chipone/Kconfig
 
 source "drivers/input/touchscreen/nvt_touch/Kconfig"
 
+source "drivers/input/touchscreen/omnivision_tcm/Kconfig"
+
 config TOUCHSCREEN_GALAXYCORE
 	bool "GALAXYCORE host download SPI driver"
 	depends on SPI
