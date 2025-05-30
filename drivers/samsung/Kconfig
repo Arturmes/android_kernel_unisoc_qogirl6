@@ -60,7 +60,7 @@ config SEC_FACTORY_INTERPOSER
 
 config SEC_EXT
 	bool "Samsung TN extension Feature"
-	default y
+	default n
 
 menu "Samsung Factory Feature"
 config SEC_FACTORY
