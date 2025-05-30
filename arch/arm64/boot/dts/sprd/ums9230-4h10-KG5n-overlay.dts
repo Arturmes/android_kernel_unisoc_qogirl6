@@ -600,6 +600,18 @@
 			regulator-name = "vddusb33";
 		};
 	};
+
+	st_st21nfc@8 {
+		compatible = "st,st21nfc";
+		reg = <0x08>;
+		clkreq-gpio = <&ap_gpio 130 0>;
+		reset-gpio = <&ap_gpio 131 0>;
+		irq-gpio = <&ap_gpio 133 0>;
+		clock-names = "clk_aux0_src", "clk_aux0_eb", "clk_26m";
+		clocks = <0xffffffff 0x2 0xffffffff 0x4 0xffffffff>;
+		phandle = <0x1e>;
+	};
+
 };
 
 &aon_i2c0 {
