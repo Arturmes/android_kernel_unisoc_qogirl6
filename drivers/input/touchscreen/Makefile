@@ -109,6 +109,7 @@ obj-$(CONFIG_TOUCHSCREEN_LOCKDOWN_INFO)	    +=  lct_tp_info.o
 obj-$(CONFIG_TOUCHSCREEN_GESTURE_WAKEUP)	    +=  lct_tp_gesture.o
 obj-$(CONFIG_TOUCHSCREEN_CHIPONE) 	+= chipone/
 obj-$(CONFIG_TOUCHSCREEN_GALAXYCORE) 	+= galaxycore/
+obj-$(CONFIG_TOUCHSCREEN_OMNIVISION_TCM) += omnivision_tcm/
 obj-$(CONFIG_TOUCHSCREEN_NT36xxx_HOSTDL_SPI) 	+= nvt_touch/
 obj-$(CONFIG_TOUCHSCREEN_JADARD_CHIPSET) 	+= jdchipset/
 obj-$(CONFIG_TOUCHSCREEN_HIMAX_CHIPSET) += hxchipset/
