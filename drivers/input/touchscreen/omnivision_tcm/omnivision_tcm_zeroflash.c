@@ -981,8 +981,9 @@ exit:
 	LOGN(tcm_hcd->pdev->dev.parent,
 			"End of config download\n");
 
-    if (tcm_hcd->ovt_tcm_driver_removing == 1)
+    if (tcm_hcd->ovt_tcm_driver_removing == 1) {
         return;
+	}
 
 	zeroflash_download_config();
 
