@@ -19,9 +19,6 @@
 #define SHUB_NAME                   "sprd-sensor"
 #define SHUB_RD                   "shub_rd"
 #define SHUB_RD_NWU                   "shub_rd_nwu"
-#define SHUB_LIGHT_CALI_DATA_FILE    "/mnt/vendor/productinfo/sensor_calibration_data/light"
-#define SHUB_PROX_CALI_DATA_FILE    "/mnt/vendor/productinfo/sensor_calibration_data/proximity"
-#define SHUB_ACC_CALI_DATA_FILE    "/mnt/vendor/productinfo/sensor_calibration_data/acc"
 #define SHUB_SENSOR_NUM		7
 #define SHUB_NODATA                 0xff
 #define HOST_REQUEST_WRITE           0x74
@@ -34,22 +31,19 @@
 #define SIPC_PM_BUFID1             1
 #define SHUB_IIO_CHN_BITS             64
 /* light sensor calibrate min value is 280lux */
-#define LIGHT_SENSOR_MIN_VALUE  50
+#define LIGHT_SENSOR_MIN_VALUE  10
 /* light sensor calibrate max value is 520lux */
 #define LIGHT_SENSOR_MAX_VALUE  10000
-#define LIGHT_CALI_DATA_COUNT   5
+#define LIGHT_CALI_DATA_COUNT   10
 /* light sensor calibrate value is 400lux; Due to kernel seldom use
  * float data, so calibrate value multiply 10000
  */
-#define LIGHT_SENSOR_CALI_VALUE (400 * LIGHT_SENSOR_CALI_DIV)
-#define LIGHT_SENSOR_CALI_DIV   (10000)
+#define LIGHT_SENSOR_CALI_VALUE (500 * 10000)
 /* prox sensor auto calibrate ground noise min value is 0 */
 #define PROX_SENSOR_MIN_VALUE   0
 
 /* ms,-1 is wait  forever */
 #define SIPC_WRITE_TIMEOUT             -1
-
-#define LIGHT_CALI_LEAK_BACKLIGHT_LV    1638//102
 
 enum calib_cmd {
 	CALIB_EN,
@@ -58,14 +52,6 @@ enum calib_cmd {
 	CALIB_DATA_READ,
 	CALIB_FLASH_WRITE,
 	CALIB_FLASH_READ,
-	CALIB_ALS_DARK,
-	CALIB_ALS_LEAK,
-	CALIB_ALS_STD,
-	CALIB_PS_NOCOVER,
-	CALIB_PS_NEAR,
-	CALIB_PS_FAR,
-	CALIB_ACC_HORIZONTAL,
-	CALIB_NONE,
 };
 
 enum calib_type {
@@ -158,21 +144,6 @@ enum shub_cmd {
 	COMM_DRV_RDY,
 };
 
-enum als_c_err{
-	CALI_ERR_NONE         = 0x00,    //None error
-	CALI_ERR_OOR          = 0x01,    //Data out of range
-	CALI_ERR_MD           = 0x02,    //The necessary data is missing
-	CALI_ERR_NCMD         = 0x03,    //No such command
-	CALI_ERR_BUSY         = 0x04,    //Calibration already running
-	CALI_ERR_CNSAVE       = 0x05,    //Calibration data cannot save
-	CALI_ERR_BLW          = 0x06,    //Backlight level wrong
-	CALI_ERR_CRD          = 0x07,    //Cannot read rawdata
-	CALI_ERR_CSHUB        = 0x08,    //Cannot send calibration data to hub
-	CALI_ERR_NMGAIN       = 0x09,    //Again not match
-	CALI_ERR_CM4CMDE      = 0x0A,    //CM4 command error
-	CALI_ERR_WSTATUS      = 0x0B,    //Other cali wrong status
-};
-
 struct sensor_batch_cmd {
 	int handle;
 	int report_rate;
@@ -184,15 +155,6 @@ struct sensor_log_control {
 	u8 length;
 	u8 debug_data[5];
 	u32 udata[MAX_SENSOR_LOG_CTL_FLAG_LEN];
-};
-
-struct als_cali_data {
-	int lux_coeff;
-	int ch0_coeff;
-	int ch1_coeff;
-	int ch2_coeff;
-	int ch3_coeff;
-	int ch4_coeff;
 };
 
 struct customer_data_get {
@@ -261,13 +223,6 @@ struct shub_data {
 	int is_sensorhub;
 	u8 cm4_operate_data[6];
 	struct customer_data_get dynamic_data_get;
-	struct mutex mutex_alsraw_lock;
-	struct als_cali_data alsCoeff;
-	u8 als_cali_result;
-	u8 als_cali_cmd;
-	bool caliRunning;
-	//struct gpio_desc * vled_pin;
-	int vled_pin;
 };
 
 extern struct shub_data *g_sensor;
@@ -309,27 +264,6 @@ struct acc_gyro_cali_data {
 	int x_raw_data;
 	int y_raw_data;
 	int z_raw_data;
-};
-
-struct sensor_event {
-    u8 Cmd;
-    u8 Length;
-    u16 HandleID;
-    union {
-        u8 udata[4];
-        struct {
-            int8_t status;
-            int8_t type;
-            };
-        };
-        union {
-            float fdata[6];
-            struct {
-                float uncalib[3];
-                float bias[3];
-            };
-        };
-    int64_t timestamp;
 };
 
 #pragma pack(1)

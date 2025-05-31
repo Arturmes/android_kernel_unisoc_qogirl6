@@ -34,6 +34,8 @@
 #include "qconf.moc"
 #include "images.c"
 
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #ifdef _
 # undef _
 # define _ qgettext

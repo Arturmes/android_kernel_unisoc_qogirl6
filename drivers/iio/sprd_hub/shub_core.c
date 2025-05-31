@@ -9,7 +9,6 @@
  *
  */
 
-#include <linux/gpio/consumer.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/fcntl.h>
@@ -37,9 +36,6 @@
 #include <linux/suspend.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
-#include <linux/backlight.h>
-#include <linux/of_gpio.h>
-#include <linux/of_device.h>
 
 #include "shub_common.h"
 #include "shub_core.h"
@@ -47,23 +43,16 @@
 #include "shub_opcode.h"
 #include <linux/pm_wakeup.h>
 
-#define UINT32_MAX     (0xFFFFFFFF)
-#define BACKLIGHT_LEVEL_MAX    (2047)
-
 #define MAX_SENSOR_HANDLE 200
-//static u8 sensor_status[MAX_SENSOR_HANDLE];
+static u8 sensor_status[MAX_SENSOR_HANDLE];
 
 static struct task_struct *thread;
 static struct task_struct *thread_nwu;
-static struct task_struct *thread_cali;
 static DECLARE_WAIT_QUEUE_HEAD(waiter);
 static int reader_flag;
 struct shub_data *g_sensor;
 static struct wakeup_source sensorhub_wake_lock;
 static u32 sensorhub_version;
-static u8 als_ch_raw_buf[12] = {0};
-static struct notifier_block backlight_nb;
-static bool backlight_notifier_registered = false;
 
 #if SHUB_DATA_DUMP
 #define MAX_RX_LEN 102400
@@ -73,10 +62,6 @@ static u8 sipc_rx_data[MAX_RX_LEN];
 /* for debug flush event */
 static int flush_setcnt;
 static int flush_getcnt;
-
-u16 data_from_dynamic[4] = {0, 0, 0, 0};
-uint8_t proximity_dynamic_thread_flag = 0;
-
 /* sensor id */
 static struct hw_sensor_id_tag hw_sensor_id[_HW_SENSOR_TOTAL] = {
 	{0, 0xFF, 0xFF, ""},
@@ -100,30 +85,17 @@ const char calibration_filename[SENSOR_ID_END][CALIB_PATH_MAX_LENG] = {
 	"proximity",
 	"colortemp"
 };
-/*
-static struct {
-	int sensor_handle;
-	u8 sensor_status;
-	const char *sensor_type_str;
-	char sensor_name[128];
-} sensor_info[] = {
-	{SENSOR_ACCELEROMETER, _IDSTA_NOT, "acc name:", ""},
-	{SENSOR_GEOMAGNETIC_FIELD, _IDSTA_NOT, "mag name:", ""},
-	{SENSOR_GYROSCOPE, _IDSTA_NOT, "gyro name:", ""},
-	{SENSOR_LIGHT, _IDSTA_NOT, "light name:", ""},
-	{SENSOR_PROXIMITY, _IDSTA_NOT, "proximity name:", ""},
-	{SENSOR_PRESSURE, _IDSTA_NOT, "prs name:", ""},
-	{SENSOR_COLOR_TEMP, _IDSTA_NOT, "color temperature name:", ""},
-	{SENSOR_LIGHT_FIRST, _IDSTA_NOT, "dual light 1 name:", ""},
-	{SENSOR_LIGHT_SECOND, _IDSTA_NOT, "dual light 2 name:", ""}
-};
-*/
+
 static int debug_flag;
 static int shub_send_event_to_iio(struct shub_data *sensor, u8 *data, u16 len);
 static int shub_download_calibration_data(struct shub_data *sensor, int sensor_type);
 static int shub_download_all_calibration_data(struct shub_data *sensor);
 static void shub_save_calibration_data(struct work_struct *work);
 static void shub_synctimestamp(struct shub_data *sensor);
+
+static int shub_send_command(struct shub_data *sensor, int sensor_ID,
+                             enum shub_subtype_id opcode,
+                             const char *data, int len);
 
 #define MAX_COMPATIBLE_SENSORS 6
 static unsigned int sensor_fusion_mode;
@@ -134,9 +106,6 @@ static char *light_firms[MAX_COMPATIBLE_SENSORS];
 static char *prox_firms[MAX_COMPATIBLE_SENSORS];
 static char *pressure_firms[MAX_COMPATIBLE_SENSORS];
 static char *color_temp_firms[MAX_COMPATIBLE_SENSORS];
-static char *light_first_firms[MAX_COMPATIBLE_SENSORS];
-static char *light_second_firms[MAX_COMPATIBLE_SENSORS];
-
 module_param(sensor_fusion_mode, uint, 0644);
 module_param_array(acc_firms, charp, 0, 0644);
 module_param_array(gryo_firms, charp, 0, 0644);
@@ -145,9 +114,6 @@ module_param_array(light_firms, charp, 0, 0644);
 module_param_array(prox_firms, charp, 0, 0644);
 module_param_array(pressure_firms, charp, 0, 0644);
 module_param_array(color_temp_firms, charp, 0, 0644);
-module_param_array(light_first_firms, charp, 0, 0644);
-module_param_array(light_second_firms, charp, 0, 0644);
-
 struct sensor_cali_info {
 	unsigned char size;
 	void *data;
@@ -160,26 +126,192 @@ static struct sensor_cali_info light_cali_info;
 static struct sensor_cali_info prox_cali_info;
 static struct sensor_cali_info pressure_cali_info;
 static struct sensor_cali_info color_temp_cali_info;
-static struct sensor_cali_info light_first_cali_info;
-static struct sensor_cali_info light_second_cali_info;
 
-#if 0
-static void set_sensor_info(char **sensor_name, int sensor_type, int success_num)
+
+static int als_cali_data = 0;
+static u8  als_get_vendor_flag = false;
+static unsigned int als_cali_target_lux = 0;
+
+#define ALS_WORK_MODE 0
+#define ALS_CALI_MODE 1
+#define ALS_CALI_SKIP_COUNT 3
+
+#define BUF_SIZE 64
+#define ARUBA_TP_VENDOR_NOVATEK 0x00
+#define ARUBA_TP_VENDOR_HIMAX 0x01
+
+
+static int hwinfo_read_file(struct shub_data *sensor, char *file_name, char buf[], int buf_size)
 {
-	int i;
+	struct file *fp;
+	mm_segment_t fs;
+	loff_t pos = 0;
+	ssize_t len = 0;
 
-	for (i = 0; i < ARRAY_SIZE(sensor_info); i++) {
-		if (sensor_info[i].sensor_handle == sensor_type) {
-			memcpy(sensor_info[i].sensor_name,
-				sensor_name[success_num],
-				strlen(sensor_name[success_num]));
-			sensor_info[i].sensor_status = _IDSTA_OK;
-			break;
+	if (file_name == NULL || buf == NULL)
+		return -1;
+
+	fp = filp_open(file_name, O_RDONLY, 0);
+	if (IS_ERR(fp)) {
+		dev_err(&sensor->sensor_pdev->dev, "file not found/n");
+		return -1;
+	}
+
+	fs = get_fs();
+	set_fs(KERNEL_DS);
+	memset(buf, 0x00, buf_size);
+	len = vfs_read(fp, buf, buf_size, &pos);
+	buf[buf_size - 1] = '\n';
+	filp_close(fp, NULL);
+	set_fs(fs);
+
+	return 0;
+}
+
+static int katoi(char *str)
+{
+	int result = 0;
+	unsigned int digit;
+	int sign;
+
+	if (*str == '-') {
+		sign = 1;
+		str += 1;
+	} else {
+		sign = 0;
+		if (*str == '+') {
+			str += 1;
 		}
 	}
+
+	for (;; str += 1) {
+		digit = *str - '0';
+		if (digit > 9)
+			break;
+		result = (10 * result) + digit;
+	}
+
+	if (sign) {
+		return -result;
+	}
+
+	return result;
 }
+
+static char *str_split(char *src,char *dst, int n)
+{
+	char *p = src;
+	char *q = dst;
+	int len = strlen(src);
+
+	if(n>len) n = len;
+	p += (len-n);
+	while((*(q++) = *(p++)));
+
+	return dst;
+}
+
+static u32 get_board_id(struct shub_data *sensor)
+{
+	char file_path[BUF_SIZE] = "/sys/hwinfo/prj_ver_flag";
+	char buf[BUF_SIZE] = {0};
+	int  ret = 0;
+	u32 board_id = 0;
+	char dst[5] = {0};
+
+	ret = hwinfo_read_file(sensor, file_path, buf, sizeof(buf));
+	if (ret != 0)
+	{
+		dev_err(&sensor->sensor_pdev->dev, "hwinfo_read_file failed.");
+		return -1;
+	}
+
+	if (buf[strlen(buf) - 1] == '\n')
+		buf[strlen(buf) - 1] = '\0';
+
+	str_split(buf, dst, 4);
+	board_id = katoi(dst);
+
+	dev_info(&sensor->sensor_pdev->dev, "board id:(0x%x)  buf(%s)  dst(%s)\n", board_id, buf, dst);
+
+	return board_id;
+}
+
+static int get_tp_vendor(struct shub_data *sensor)
+{
+	char file_path[BUF_SIZE] = "/sys/ontim_dev_debug/touch_screen/vendor";
+	char buf[BUF_SIZE] = {0};
+	char str[BUF_SIZE] = {0};
+	int  ret = 0;
+	int vendor = 0;
+	u32 board_id = 0;
+
+	ret = hwinfo_read_file(sensor, file_path, buf, sizeof(buf));
+	if (ret != 0)
+	{
+		dev_err(&sensor->sensor_pdev->dev, "hwinfo_read_file failed.");
+		return -1;
+	}
+
+	if (buf[strlen(buf) - 1] == '\n')
+		buf[strlen(buf) - 1] = '\0';
+
+	sprintf(str, "%s", buf);
+
+	board_id = get_board_id(sensor);
+
+	if (board_id == 0x1){
+		if (strncmp(buf,"novatek",7) == 0)
+			vendor = ARUBA_TP_VENDOR_NOVATEK;
+		else if (strncmp(buf,"himax",5) == 0)
+			vendor = ARUBA_TP_VENDOR_HIMAX;
+	}
+
+	vendor = vendor | (board_id << 4);
+	als_get_vendor_flag = true;
+
+	dev_info(&sensor->sensor_pdev->dev, "tp vendor:(0x%x)%s, board id:%d\n", vendor, buf, board_id);
+
+	return vendor;
+}
+
+static int set_als_para(struct shub_data *sensor, int mode)
+{
+    u32 sensor_para[3] = {0};
+    int ret = 0;
+    int tp_vendor = 0;
+
+    tp_vendor = get_tp_vendor(sensor);
+
+    sensor_para[0] = mode;
+    sensor_para[1] = tp_vendor < 0 ? 0 : tp_vendor;
+    sensor_para[2] = als_cali_data < 0 ? 0 : als_cali_data;
+
+    sensor_para[0] = 1;
+    sensor_para[1] = 1;
+    sensor_para[2] = 1;
+
+    dev_info(&sensor->sensor_pdev->dev,
+            "set_als_para: sensor_para[0]=%d, sensor_para[1]=%d, sensor_para[2]=%d\n",
+            sensor_para[0], sensor_para[1], sensor_para[2]);
+
+#if 0
+    ret = shub_send_command(sensor, 5, SHUB_SET_CUSTOM_PARA, (char *)sensor_para, sizeof(sensor_para));
+    if (ret < 0)
+        dev_err(&sensor->sensor_pdev->dev, "%s: send SHUB_SET_CUSTOM_PARA command fail, ret = %d\n", __func__, ret);
+
+    ret = shub_send_command(sensor, 5, SHUB_SET_DISABLE_SUBTYPE, NULL, 0);
+    if (ret < 0)
+        dev_err(&sensor->sensor_pdev->dev, "%s: Write SHUB_SET_DISABLE_SUBTYPE fail, ret = %d\n", __func__, ret);
+
+    ret = shub_send_command(sensor, 5, SHUB_SET_ENABLE_SUBTYPE, NULL, 0);
+    if (ret < 0)
+        dev_err(&sensor->sensor_pdev->dev, "Write SHUB_SET_ENABLE_SUBTYPE fail\n");
 #endif
-#if 1
+
+    return ret;
+}
+
 static void get_sensor_info(char **sensor_name, int sensor_type, int success_num)
 {
 	int i, now_order = 0;
@@ -199,7 +331,7 @@ static void get_sensor_info(char **sensor_name, int sensor_type, int success_num
 					strlen(sensor_name[success_num]));
 	hw_sensor_id[now_order].id_status = _IDSTA_OK;
 }
-#endif
+
 /**
  *send data
  * handler time must less than 5s
@@ -270,7 +402,7 @@ static int shub_send_command(struct shub_data *sensor, int sensor_ID,
 	cmddata.subtype = opcode;
 	cmddata.length = len;
 	/* no data command  set default data 0xFF */
-	if (len == 0) {
+	if ((len == 0) || (data == NULL)) {
 		cmddata.buff[0] = 0xFF;
 		cmddata.length = 1;
 		len = 1;
@@ -416,47 +548,23 @@ static int shub_read_thread_nwu(void *data)
 
 /* sync from: hardware/libhardware/include/hardware/sensors-base.h */
 #define SENSOR_TYPE_LIGHT 5
-#define SENSOR_TYPE_PROX  8
-#define SENSOR_TYPE_ACC   1
 
-#if 0
 static unsigned int channel_data_light_x_int0;
 static unsigned long channel_data_light_time;
-#endif
 
-static void channel_data_hook(struct shub_data *sensor, void *data)
+static void channel_data_hook(void *data)
 {
 	/* sync with struct mSenMsgTpA_t of HAL */
 	int handle_id = ((short *)data)[1];
-	char cmdhandle = ((char *)data)[0];
 
 	if (handle_id == SENSOR_TYPE_LIGHT) {
-		if(cmdhandle == 129) { //eHalSenData(129),eHalFlush(130)
-			if((sensor->caliRunning) && mutex_trylock(&sensor->mutex_alsraw_lock)) {
-				memset(als_ch_raw_buf, 0, sizeof(als_ch_raw_buf));
-				memcpy(als_ch_raw_buf, &data[20], 12);
-				memset(&data[20], 0, (sizeof(int) * 3));
-				pr_err("Alscali:Copy light raw data\n");
-				//pr_err("Alscali:[common] Copy data from event [%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d]!\n",
-				//			als_ch_raw_buf[0],als_ch_raw_buf[1],als_ch_raw_buf[2],als_ch_raw_buf[3],als_ch_raw_buf[4],
-				//			als_ch_raw_buf[5],als_ch_raw_buf[6],als_ch_raw_buf[7],als_ch_raw_buf[8],als_ch_raw_buf[9],
-				//			als_ch_raw_buf[10],als_ch_raw_buf[11]);
-				mutex_unlock(&sensor->mutex_alsraw_lock);
-			}
-		}
-#if 0
 		channel_data_light_x_int0 = ((unsigned int *)data)[2];
 		channel_data_light_time = jiffies;
 		pr_debug("%s() val = %u, time = %lu\n",
 			 __func__, channel_data_light_x_int0,
 			 channel_data_light_time);
-#endif
 	}
 }
-
-struct sensor_event sensor_event_acc_data;
-struct sensor_event sensor_event_als_data;
-struct sensor_event sensor_event_ps_data;
 
 static void shub_data_callback(struct shub_data *sensor, u8 *data, u32 len)
 {
@@ -469,14 +577,7 @@ static void shub_data_callback(struct shub_data *sensor, u8 *data, u32 len)
 /*		for(i = 0;i < len;i++)
  *			pr_info("len=%d,data[%d]=%d\n",len,i,data[i]);
  */
-        if(data[2]==1){//accel
-            memcpy(&sensor_event_acc_data,data,sizeof(struct sensor_event));
-        } else if(data[2]==5){//light
-            memcpy(&sensor_event_als_data,data,sizeof(struct sensor_event));
-        }else if(data[2]==58){//proximity
-            memcpy(&sensor_event_ps_data,data,sizeof(struct sensor_event));
-        }
-		channel_data_hook(sensor, data);
+		channel_data_hook(data);
 		shub_send_event_to_iio(sensor, data, len);
 		break;
 
@@ -674,7 +775,6 @@ static void request_send_firmware(struct shub_data *sensor,
 			continue;
 		}
 		kfree(fw_data);
-		//set_sensor_info(sensor_firms, sensor_type, i);
 		get_sensor_info(sensor_firms, sensor_type, i);
 		dev_info(&sensor->sensor_pdev->dev, "init sensor success\n");
 		success = 1;
@@ -705,6 +805,10 @@ static int shub_download_opcode(struct shub_data *sensor)
 			      SENSOR_GEOMAGNETIC_FIELD, &mag_cali_info);
 	msleep(200);
 
+	request_send_firmware(sensor, light_firms,
+			      SENSOR_LIGHT, &light_cali_info);
+	msleep(200);
+
 	request_send_firmware(sensor, prox_firms,
 			      SENSOR_PROXIMITY, &prox_cali_info);
 	msleep(200);
@@ -715,18 +819,6 @@ static int shub_download_opcode(struct shub_data *sensor)
 
 	request_send_firmware(sensor, color_temp_firms,
 			      SENSOR_COLOR_TEMP, &color_temp_cali_info);
-	msleep(200);
-
-	request_send_firmware(sensor, light_first_firms,
-			      SENSOR_LIGHT_FIRST, &light_first_cali_info);
-	msleep(200);
-
-	request_send_firmware(sensor, light_second_firms,
-			      SENSOR_LIGHT_SECOND, &light_second_cali_info);
-	msleep(200);
-
-	request_send_firmware(sensor, light_firms,
-			      SENSOR_LIGHT, &light_cali_info);
 	msleep(200);
 
 	cali_data_size = 8 * sizeof(unsigned char);
@@ -1130,6 +1222,7 @@ static ssize_t logctl_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(logctl);
 
+#if 0
 static int check_proximity_cali_data(void *cali_data)
 {
 	struct prox_cali_data prox_cali;
@@ -1162,6 +1255,7 @@ static int check_proximity_cali_data(void *cali_data)
 
 	return 0;
 }
+#endif
 
 static int check_acc_cali_data(void *cali_data)
 {
@@ -1233,7 +1327,7 @@ static void shub_save_calibration_data(struct work_struct *work)
 		err = check_gyro_cali_data(sensor->calibrated_data);
 		break;
 	case SENSOR_PROXIMITY:
-		err = check_proximity_cali_data(sensor->calibrated_data);
+		//err = check_proximity_cali_data(sensor->calibrated_data);
 		break;
 	default:
 		break;
@@ -1256,7 +1350,7 @@ static void shub_save_calibration_data(struct work_struct *work)
 		 CALIBRATION_NODE, calibration_filename[sensor->cal_id]);
 	dev_info(&sensor->sensor_pdev->dev,
 		 "sensor_id=%d,file_path=%s\n", sensor->cal_id, file_path);
-	pfile = filp_open(file_path, O_WRONLY | O_CREAT | O_TRUNC, 0660);
+	pfile = filp_open(file_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 	if (IS_ERR(pfile)) {
 		err = PTR_ERR(pfile);
 		dev_err(&sensor->sensor_pdev->dev,
@@ -1276,8 +1370,6 @@ static void shub_save_calibration_data(struct work_struct *work)
 	}
 	if (pfile)
 		filp_close(pfile, NULL);
-
-	shub_download_calibration_data(sensor, sensor->cal_id);
 }
 
 static void shub_save_mag_offset(struct shub_data *sensor,
@@ -1315,51 +1407,13 @@ static void shub_save_mag_offset(struct shub_data *sensor,
 		filp_close(pfile, NULL);
 }
 
-static int backlight_level_notify(struct notifier_block *nb,
-									unsigned long val, void *bd)
-{
-	//struct backlight_device *backlight = bd;
-	int bl = (int)val;
-	int err = 0;
-
-	if((bl >= 0) && (bl <= BACKLIGHT_LEVEL_MAX)) {
-		pr_err("Alscali:Backlight level changed->[%d]\n", bl);
-		err = shub_send_command(g_sensor, SENSOR_LIGHT, SHUB_SET_MODE,
-								((char *)&bl), sizeof(bl));
-		if (err < 0) {
-			pr_err("Alscali:Send backlight to CM4 failed![%d]\n", err);
-		}
-	} else {
-		pr_err("Alscali:Backlight notify err level[%d]\n", bl);
-	}
-
-	return NOTIFY_OK;
-}  
-
 static int shub_download_all_calibration_data(struct shub_data *sensor)
 {
-	int sensor_type = 0, err = 0, bl = 0;
+	int sensor_type = 0, err = 0;
 
 	for (sensor_type = 0; sensor_type < 9; sensor_type++)
 		shub_download_calibration_data(sensor, sensor_type);
 
-	bl = get_backlight_brightness();
-	if((bl < 0) || (bl > BACKLIGHT_LEVEL_MAX)) {
-		bl = 0;
-	}
-	
-	err = shub_send_command(sensor, SENSOR_LIGHT, SHUB_SET_MODE,
-							((char *)&bl), sizeof(bl));
-	if (err < 0) {
-		pr_err("Alscali:Init backlight to CM4 failed![%d]\n", err);
-	}
-	
-	backlight_nb.notifier_call = backlight_level_notify;
-	backlight_nb.priority = 0;
-	if(backlight_level_notifier_register(&backlight_nb) == 0) {
-		backlight_notifier_registered = true;
-	}
-	
 	return err;
 }
 
@@ -1411,14 +1465,6 @@ static int shub_download_calibration_data(struct shub_data *sensor, int sensor_t
 		filp_close(pfile, NULL);
 	}
 
-	if(sensor_type == SENSOR_TYPE_LIGHT) {
-		memcpy(&sensor->alsCoeff, (raw_cali_data), sizeof(sensor->alsCoeff));
-		//pr_err("Als Cali coeff in file:[%d, %d, %d, %d, %d, %d]\n", sensor->alsCoeff.lux_coeff,
-		//                   sensor->alsCoeff.ch0_coeff, sensor->alsCoeff.ch1_coeff,
-		//				   sensor->alsCoeff.ch2_coeff, sensor->alsCoeff.ch3_coeff,
-		//				   sensor->alsCoeff.ch4_coeff);
-	}
-
 	/* for debug */
 	for (j = 0; j < cal_file_size; j++)
 		dev_info(&sensor->sensor_pdev->dev,
@@ -1428,6 +1474,11 @@ send_calibration_data:
 	err = shub_send_command(sensor, sensor_type,
 				SHUB_SET_CALIBRATION_DATA_SUBTYPE,
 				raw_cali_data, cal_file_size);
+
+    if (sensor_type == SENSOR_TYPE_LIGHT) {
+        memcpy(&als_cali_data, raw_cali_data, cal_file_size);
+        set_als_para(sensor, ALS_WORK_MODE);
+    }
 
 	if (err < cal_file_size)
 		dev_err(&sensor->sensor_pdev->dev,
@@ -1465,6 +1516,9 @@ static ssize_t enable_store(struct device *dev,
 	if (shub_send_command(sensor, handle, subtype, NULL, 0) < 0)
 		dev_err(&sensor->sensor_pdev->dev, "Write SetEn/Disable fail\n");
 
+	if (handle < MAX_SENSOR_HANDLE && handle > 0)
+		sensor_status[handle] = enabled;
+
 	return count;
 }
 static DEVICE_ATTR_WO(enable);
@@ -1488,15 +1542,9 @@ static ssize_t batch_store(struct device *dev, struct device_attribute *attr,
 		   &batch_cmd.report_rate,
 		   &batch_cmd.batch_timeout) != 4)
 		return -EINVAL;
-	dev_info(&sensor->sensor_pdev->dev,
-		 "handle = %d, rate = %d, batch_latency = %lld, enabled = %d\n",
+	dev_info(&sensor->sensor_pdev->dev, "handle = %d, rate = %d, enabled = %d\n",
 		 batch_cmd.handle,
-		 batch_cmd.report_rate, batch_cmd.batch_timeout, flag);
-
-	if (batch_cmd.handle == 58 || batch_cmd.handle == 8){
-		batch_cmd.report_rate = 100 * 1000;//us
-		dev_info(&sensor->sensor_pdev->dev, "alsps set ps report_rate 10\n");
-	}
+		 batch_cmd.report_rate, flag);
 
 	if (shub_send_command(sensor, batch_cmd.handle,
 			      SHUB_SET_BATCH_SUBTYPE,
@@ -1607,7 +1655,7 @@ static int shub_save_als_cali_data(struct shub_data *sensor,
 	}
 	snprintf(file_path, sizeof(file_path), "%s%s",
 		 CALIBRATION_NODE, calibration_filename[5]);
-	pfile = filp_open(file_path, O_WRONLY | O_CREAT | O_TRUNC, 0660);
+	pfile = filp_open(file_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 	if (IS_ERR(pfile)) {
 		err = PTR_ERR(pfile);
 		pr_err("open file %s error=%d\n", file_path, err);
@@ -1624,7 +1672,6 @@ static int shub_save_als_cali_data(struct shub_data *sensor,
 	return err;
 }
 
-#if 0
 static int set_als_calib_cmd(struct shub_data *sensor, u8 cmd, u8 id)
 {
 	int err, i, average_als, als_cali_coef, status;
@@ -1632,6 +1679,7 @@ static int set_als_calib_cmd(struct shub_data *sensor, u8 cmd, u8 id)
 	u16 *ptr = (u16 *)data;
 	char als_data[30];
 	int light_sum = 0;
+	int target_lux;
 
 	for (i = 0; i < LIGHT_CALI_DATA_COUNT; i++) {
 		err = shub_sipc_read(sensor,
@@ -1642,10 +1690,14 @@ static int set_als_calib_cmd(struct shub_data *sensor, u8 cmd, u8 id)
 		}
 		/*sleep for light senor collect data every 100ms*/
 		msleep(100);
-		pr_debug("shub_sipc_read: ptr[0] = %d\n", ptr[0]);
+
+		if (i < ALS_CALI_SKIP_COUNT)
+                        continue;
+
+		pr_info("shub_sipc_read: ptr[0] = %d\n", ptr[0]);
 		light_sum += ptr[0];
 	}
-	average_als = light_sum / LIGHT_CALI_DATA_COUNT;
+	average_als = light_sum / (LIGHT_CALI_DATA_COUNT - ALS_CALI_SKIP_COUNT);
 	pr_info("light sensor cali light_sum:%d, average_als = %d\n",
 		light_sum, average_als);
 
@@ -1654,7 +1706,13 @@ static int set_als_calib_cmd(struct shub_data *sensor, u8 cmd, u8 id)
 		als_cali_coef = CALIB_STATUS_FAIL;
 		status = CALIB_STATUS_FAIL;
 	} else {
-		als_cali_coef = LIGHT_SENSOR_CALI_VALUE / average_als;
+		if (als_cali_target_lux == 0) {
+			target_lux = LIGHT_SENSOR_CALI_VALUE;
+		} else {
+			target_lux = als_cali_target_lux * 10000;
+		}
+
+		als_cali_coef = target_lux / average_als;
 		status = CALIB_STATUS_PASS;
 	}
 	memcpy(als_data, &als_cali_coef, sizeof(als_cali_coef));
@@ -1672,399 +1730,12 @@ static int set_als_calib_cmd(struct shub_data *sensor, u8 cmd, u8 id)
 		pr_err("Write Light Sensor CalibratorData Fail\n");
 		return err;
 	}
-	pr_debug("Light Sensor Calibrator status = %d\n", status);
+
+	als_cali_data = als_cali_coef;
+
+	pr_info("Light Sensor Calibrator status = %d, als_cali_data = %d\n", status, als_cali_data);
 
 	return status;
-}
-#endif
-#define STK_LIGHT_DRV_NAME	"light_als02"
-#define LTR_LIGHT_DRV_NAME	"light_als01"
-/*
-static int calcAgain(int gain)
-{
-	u16 maxGain = 0;
-
-	if(hw_sensor_id[ORDER_LIGHT - 1].id_status == _IDSTA_OK) {
-		if(!strncmp(hw_sensor_id[ORDER_LIGHT - 1].pname, LTR_LIGHT_DRV_NAME,20)) {
-			pr_err("Alscali:Use vendor_01 max gain 512x\n");
-			maxGain = 512;
-		} else if(!strncmp(hw_sensor_id[ORDER_LIGHT - 1].pname, STK_LIGHT_DRV_NAME,20)) {
-			pr_err("Alscali:Use vendor_02 max gain 128x\n");
-			maxGain = 128;
-		} else {
-			pr_err("Alscali:Use default[1] max gain 128x\n");
-			maxGain = 128;
-		}
-	} else {
-		pr_err("Alscali:Use default[2] max gain 128x\n");
-		maxGain = 128;
-	}
-
-	return maxGain/gain;
-}
-*/
-
-static int shub_als_cali_thread(void *drvdata)
-{
-	static u16 again;
-	//static unsigned int caliDarkAvg[6];
-	//static unsigned int caliLeakAvg[6];
-
-    int als_of_0level = 0, als_of_102level = 0;
-	//u16 tempavg = 0, t_gain = 0;
-	int err = 0;
-	//int i = 0, j = 0;
-	int i = 0;
-	int average_als = 0;
-	int errCount = 0;
-	char als_data[30] = {0};
-	u16 *ptr = (u16 *)als_data;
-	int tempCali[6] = {0};
-	unsigned int sum[5] = {0};
-	int caliRate = 80;
-    u8 backlight_level = 0;
-
-	struct shub_data *sensor = (struct shub_data *)drvdata;
-
-	sensor->caliRunning = true;
-	pr_err("Alscali: Cali Enter\n");
-	sensor->als_cali_result = CALI_ERR_NONE;
-
-	memcpy(tempCali, &(sensor->alsCoeff), sizeof(struct als_cali_data));
-	pr_err("Alscali:Cali Thread,temp cali data[%d %d %d %d %d %d]\n", tempCali[0], tempCali[1], tempCali[2],
-	                                                          tempCali[3], tempCali[4], tempCali[5]);
-	
-	if((sensor->als_cali_cmd == CALIB_ALS_LEAK) || (sensor->als_cali_cmd == CALIB_ALS_DARK)) {
-		i = UINT32_MAX;
-		err = shub_send_command(sensor, SENSOR_LIGHT, SHUB_SET_MODE, ((char *)&i), sizeof(i));
-		if (err < 0) {
-			pr_err("Alscali:Set cali mode into cm4 failed!\n");
-			sensor->als_cali_result = CALI_ERR_CM4CMDE;
-			sensor->caliRunning = false;
-			return 0;
-		}
-
-		err = shub_send_command(sensor, SENSOR_LIGHT, SHUB_SET_BATCH_SUBTYPE, (char *)&caliRate, sizeof(caliRate));
-		if (err < 0) {
-			pr_err("Alscali:Set report rate into cm4 failed\n", __func__);
-			sensor->als_cali_result = CALI_ERR_CM4CMDE;
-			sensor->caliRunning = false;
-			return 0;
-		}
-	}
-
-	msleep(300);
-	
-	i = 0;
-	do{
-		if(errCount >= 3) {
-			pr_err("Alscali: Retry 3 times!! exit cali thread\n");
-			again = 0;
-			break;
-		}
-
-		err = 0;
-		sensor->als_cali_result = CALI_ERR_NONE;
-		backlight_level = get_backlight_brightness();
-		pr_err("Alscali:backlight_level = %d\n", backlight_level);
-
-        err = shub_sipc_read(sensor, SHUB_GET_LIGHT_RAWDATA_SUBTYPE, als_data, 2);
-        if (err < 0) {
-            pr_err("Alscali:read RegMapR_GetLightRawData failed!\n");
-            sensor->als_cali_result = CALI_ERR_CRD;
-            break;
-        } else {
-            pr_err("Alscali:ptr[0] = %d\n", ptr[0]);
-        }
-
-        pr_err("Alscali:sensor->als_cali_cmd = %d\n", sensor->als_cali_cmd);
-
-        switch(sensor->als_cali_cmd){
-            case CALIB_ALS_STD://8
-                pr_err("Alscali:CALIB_ALS_STD enter!\n");
-                sum[0] += ptr[0];
-                pr_err("Alscali:CALIB_ALS_STD:shub_sipc_read: ptr[0] = %d, sum[0] = %d\n", ptr[0], sum[0]);
-                break;
-
-            case CALIB_ALS_LEAK://7
-                if(backlight_level == 0){
-                    sensor->als_cali_result = CALI_ERR_BLW;
-                    pr_err("Alscali:[leak]:Backlight level is 0\n");
-                    err = -EAGAIN;
-                    break;
-                }
-                pr_err("Alscali:CALIB_ALS_LEAK enter!\n");
-
-                sum[2] += ptr[0];
-                pr_err("Alscali:CALIB_ALS_LEAK:shub_sipc_read: ptr[0] = %d, sum[2] = %d\n", ptr[0], sum[2]);
-                break;
-            case CALIB_ALS_DARK://6
-                if((sensor->als_cali_cmd == CALIB_ALS_DARK) && (backlight_level != 0)){
-                    sensor->als_cali_result = CALI_ERR_BLW;
-                    pr_err("Alscali:[dark]:Backlight level is not 0\n");
-                    err = -EAGAIN;
-                    break;
-                }
-                pr_err("Alscali:CALIB_ALS_DARK enter!\n");
-
-                sum[1] += ptr[0];
-                pr_err("Alscali:CALIB_ALS_DARK:shub_sipc_read: ptr[0] = %d, sum[1] = %d\n", ptr[0], sum[1]);
-                break;
-            default :
-                pr_err("Alscali:CALIB_NONE enter!\n");
-                break;
-        }
-
-        if (shub_send_command(sensor, 5, SHUB_SET_FLUSH_SUBTYPE, NULL, 0x00) < 0) {
-            pr_err("Alscali:Flush light data fail!!\n");
-        }
-
-        msleep(200);
-        if(err >= 0) {
-            i++;
-            errCount = 0;
-        } else {
-            errCount++;
-            continue;
-        }
-    }while((i < LIGHT_CALI_DATA_COUNT) && !kthread_should_stop());
-
-    pr_err("Alscali: i = %d, sum[1] = %d, sum[2] = %d\n", i, sum[1], sum[2]);
-
-    if((!kthread_should_stop()) && (sensor->als_cali_result == CALI_ERR_NONE)) {
-        pr_err("Alscali: sum[1] = %d, sum[2] = %d\n", sum[1], sum[2]);
-        pr_err("Alscali:sensor->als_cali_cmd = %d\n", sensor->als_cali_cmd);
-        if((sensor->als_cali_cmd == CALIB_ALS_LEAK) || (sensor->als_cali_cmd == CALIB_ALS_DARK)) {
-            pr_err("Alscali:cp avedata to tempCali!\n");
-            pr_err("Alscali: sum[1] = %d, sum[2] = %d\n", sum[1], sum[2]);
-
-            switch(sensor->als_cali_cmd) {
-                case CALIB_ALS_DARK:
-                    pr_err("Alscali:cp ave dark data to tempCali[1]!\n");
-
-                    als_of_0level = sum[1] *10000 / LIGHT_CALI_DATA_COUNT;
-                    sensor->als_cali_result = CALI_ERR_NONE;
-                    tempCali[1] = als_of_0level;
-                    pr_err("Alscali: als_of_0level = %d\n", als_of_0level);
-                    pr_err("Alscali: sum[1] = %d\n", sum[1]);
-                    break;
-                case CALIB_ALS_LEAK:
-                    pr_err("Alscali:cp ave leak data to tempCali[2]!\n");
-
-                    als_of_102level = sum[2] *10000 / LIGHT_CALI_DATA_COUNT;
-                    sensor->als_cali_result = CALI_ERR_NONE;
-                    tempCali[2] = als_of_102level;
-                    pr_err("Alscali: als_of_102level = %d\n", als_of_102level);
-                    pr_err("Alscali: sum[2] = %d\n", sum[2]);
-                    break;
-                default:
-                    break;
-            }
-        }
-        else if(sensor->als_cali_cmd == CALIB_ALS_STD)
-        {
-            average_als = sum[0] / LIGHT_CALI_DATA_COUNT;
-            pr_err("Alscali: light_sum:%ld, average_als = %d\n", sum[0], average_als);
-
-            if (average_als < LIGHT_SENSOR_MIN_VALUE || average_als > LIGHT_SENSOR_MAX_VALUE) {
-                pr_err("Alscali:Average data out of range\n");
-                sensor->als_cali_result = CALI_ERR_OOR;
-            } else {
-                tempCali[0] = LIGHT_SENSOR_CALI_VALUE / average_als;
-                pr_err("Alscali:lux cali coeff update %d\n", tempCali[0]);
-                sensor->als_cali_result = CALI_ERR_NONE;
-            }
-        }
-
-        if(sensor->als_cali_result == CALI_ERR_NONE) {
-            memcpy(als_data, tempCali, sizeof(tempCali));
-            err = shub_save_als_cali_data(sensor, als_data, sizeof(als_data));
-            if (err < 0) {
-                pr_err("Alscali:Save Light Sensor CalibratorData Fail\n");
-                sensor->als_cali_result = CALI_ERR_CNSAVE;
-            }
-        }
-
-        if(sensor->als_cali_result == CALI_ERR_NONE) {
-            err = shub_send_command(sensor, SENSOR_TYPE_LIGHT,
-                                    SHUB_SET_CALIBRATION_DATA_SUBTYPE,
-                                    als_data, CALIBRATION_DATA_LENGTH);
-            if (err < 0) {
-                pr_err("Alscali:Write Light Sensor CalibratorData Fail\n");
-                sensor->als_cali_result = CALI_ERR_CSHUB;
-            } else {
-                memcpy(&(sensor->alsCoeff), tempCali, sizeof(struct als_cali_data));
-                pr_err("Alscali:Coeff data after cali:[%d, %d, %d, %d, %d, %d]\n",
-                    sensor->alsCoeff.lux_coeff, sensor->alsCoeff.ch0_coeff,
-                    sensor->alsCoeff.ch1_coeff, sensor->alsCoeff.ch2_coeff,
-                    sensor->alsCoeff.ch3_coeff, sensor->alsCoeff.ch4_coeff);
-            }
-        }
-
-        pr_err("Alscali: Calibrator Done. Thread exit. [status = %d]\n", sensor->als_cali_result);
-    }
-
-    if((sensor->als_cali_cmd == CALIB_ALS_LEAK) || (sensor->als_cali_cmd == CALIB_ALS_DARK)) {
-        i = get_backlight_brightness();
-        err = shub_send_command(sensor, SENSOR_LIGHT, SHUB_SET_MODE, ((char *)&i), sizeof(i));
-        if (err < 0) {
-            pr_err("Alscali:Restore backlight level to cm4 failed!!\n");
-        }
-    }
-    again = 0;
-    pr_err("Alscali: Cali Exit\n");
-    sensor->caliRunning = false;
-    return 0;
-}
-
-static int shub_other_cali_thread(void *drvdata)
-{
-	int err = 0;
-	int caliRate = 10;
-	struct shub_data *sensor = (struct shub_data *)drvdata;
-	char temp_cali_data[CALIBRATION_DATA_LENGTH] = {0};
-
-	pr_err("Othercali: Cali Enter\n");
-	sensor->als_cali_result = CALI_ERR_NONE;
-	if (sensor->mcu_mode <= SHUB_OPDOWNLOAD) {
-		pr_err("Othercali:mcu_mode == SHUB_BOOT!\n");
-		return -EINVAL;
-	}
-	sensor->caliRunning = true;
-	
-	err = shub_send_command(sensor, sensor->cal_id, SHUB_SET_ENABLE_SUBTYPE, NULL, 0);
-	if (err < 0) {
-		pr_err("Othercali:Set enable into cm4 failed\n", __func__);
-		sensor->als_cali_result = CALI_ERR_CM4CMDE;
-		sensor->caliRunning = false;
-		return 0;
-	}
-	
-	err = shub_send_command(sensor, sensor->cal_id, SHUB_SET_BATCH_SUBTYPE, (char *)&caliRate, sizeof(caliRate));
-	if (err < 0) {
-		pr_err("Othercali:Set report rate into cm4 failed\n", __func__);
-		sensor->als_cali_result = CALI_ERR_CM4CMDE;
-		sensor->caliRunning = false;
-		return 0;
-	}
-
-	msleep(500);
-	switch(sensor->als_cali_cmd){
-		case CALIB_PS_NOCOVER:
-			err = shub_send_command(sensor, sensor->cal_id, SHUB_SET_CALIBRATION_DATA_SUBTYPE, temp_cali_data, sizeof(temp_cali_data));
-			if (err < 0) {
-				pr_err("Write empty psensor CalibratorData Fail!\n");
-				break;
-			}
-			msleep(20);
-			err = set_calib_cmd(sensor, CALIB_EN, sensor->cal_id, 1, 0);
-			break;
-		case CALIB_PS_NEAR:
-			err = set_calib_cmd(sensor, CALIB_EN, sensor->cal_id, 5, 0);
-			break;
-		case CALIB_PS_FAR:
-			err = set_calib_cmd(sensor, CALIB_EN, sensor->cal_id, 6, 0);
-			break;
-		case CALIB_ACC_HORIZONTAL:
-			err = set_calib_cmd(sensor, CALIB_EN, sensor->cal_id, 1, 0);
-			break;
-		default:
-			break;
-	}
-	
-	if (err < 0) {
-		pr_err("Othercali:Set enable cali cmd into cm4 failed [sensor:%d]\n", sensor->cal_id);
-		sensor->als_cali_result = CALI_ERR_CM4CMDE;
-		sensor->caliRunning = false;
-		return 0;
-	}
-	
-	do {
-		msleep(1000);
-		err = set_calib_cmd(sensor, CALIB_CHECK_STATUS, sensor->cal_id, 1, 0);
-		if (err < 0) {
-			pr_err("Othercali:Send CALIB_CHECK_STATUS cmd fail![%d]\n", err);
-			if(SENSOR_PROXIMITY == sensor->cal_id){
-				shub_download_calibration_data(sensor, sensor->cal_id);
-			}
-			sensor->als_cali_result = CALI_ERR_CM4CMDE;
-			sensor->caliRunning = false;
-			return err;
-		}
-		
-		err = shub_sipc_read(sensor, SHUB_GET_CALIBRATION_DATA_SUBTYPE,
-							sensor->calibrated_data, CALIBRATION_DATA_LENGTH);
-		if (err < 0) {
-			pr_err("Othercali:Read CalibratorData fail![%d]\n", err);
-			if(SENSOR_PROXIMITY == sensor->cal_id){
-				shub_download_calibration_data(sensor, sensor->cal_id);
-			}			
-			sensor->als_cali_result = CALI_ERR_CM4CMDE;
-			sensor->caliRunning = false;
-			return err;
-		}
-		
-		if(sensor->calibrated_data[0] == 2) {
-			pr_err("Othercali:Sensor [%d] cali done\n", sensor->cal_id);
-			break;
-		} else if(sensor->calibrated_data[0] != 1) {
-			pr_err("Othercali:Sensor [%d] cali fail![%d]\n", sensor->cal_id, sensor->calibrated_data[0]);
-			if(SENSOR_PROXIMITY == sensor->cal_id){
-				shub_download_calibration_data(sensor, sensor->cal_id);
-			}
-			sensor->als_cali_result = CALI_ERR_WSTATUS;
-			sensor->caliRunning = false;
-			return sensor->calibrated_data[0];
-		}
-	} while(sensor->calibrated_data[0] == 1);
-
-	err = set_calib_cmd(sensor, CALIB_DATA_READ, sensor->cal_id, 1, 0);
-	if (err < 0) {
-		pr_err("Othercali:Read CalibratorData fail![%d]\n", err);
-		if(SENSOR_PROXIMITY == sensor->cal_id){
-			shub_download_calibration_data(sensor, sensor->cal_id);
-		}
-		sensor->als_cali_result = CALI_ERR_CM4CMDE;
-		sensor->caliRunning = false;
-		return err;
-	}
-	
-	msleep(500);
-	err = shub_sipc_read(sensor, SHUB_GET_CALIBRATION_DATA_SUBTYPE, sensor->calibrated_data, CALIBRATION_DATA_LENGTH);
-	if (err < 0) {
-		pr_err("Othercali:Read CalibratorData fail![%d]\n", err);
-		if(SENSOR_PROXIMITY == sensor->cal_id){
-			shub_download_calibration_data(sensor, sensor->cal_id);
-		}
-		sensor->als_cali_result = CALI_ERR_CM4CMDE;
-		sensor->caliRunning = false;
-		return err;
-	}
-	
-	if((sensor->cal_id != SENSOR_PROXIMITY) || 
-		((sensor->cal_id == SENSOR_PROXIMITY) &&
-		 (sensor->calibrated_data[12] == 0x07))) {
-		sensor->cal_savests = 1;
-		schedule_work(&sensor->savecalifile_work);
-		while (sensor->cal_savests == 1) {
-			msleep(100);
-			pr_err("Othercali:saving cali data...\n");
-		}
-		err = sensor->cal_savests;
-		if(err != 0) {
-			sensor->als_cali_result = CALI_ERR_CNSAVE;
-			pr_err("Othercali:Save cali data fail![%d]\n", err);
-		}
-	}
-	
-	err = shub_send_command(sensor, sensor->cal_id, SHUB_SET_DISABLE_SUBTYPE, NULL, 0);
-	if (err < 0) {
-		pr_err("Othercali:Set disable into cm4 fail![%d]\n", err);
-	}
-	
-	pr_err("Othercali: Cali Exit\n");
-	sensor->caliRunning = false;
-	return 0;
 }
 
 static ssize_t light_sensor_calibrator_store(struct device *dev,
@@ -2079,64 +1750,33 @@ static ssize_t light_sensor_calibrator_store(struct device *dev,
 		return -EINVAL;
 	}
 
-#if 0
 	len = sscanf(buf, "%d %d\n", &sensor->cal_cmd, &sensor->cal_id);
 	if (len < 2)
 		return -EINVAL;
 	pr_debug("id:%d,type:%d\n", sensor->cal_cmd, sensor->cal_id);
-
 	if (sensor->cal_cmd != CALIB_DATA_WRITE ||
 		sensor->cal_id != SENSOR_TYPE_LIGHT) {
 		pr_err("light sensor cali cmd error\n");
 		return -EINVAL;
 	}
 
+#if 0
+	err = set_als_para(sensor, ALS_CALI_MODE);
+	if (err < 0)
+		pr_err("set als to calib mode Fail!\n");
+
+	msleep(200);
+#endif
+
 	err = set_als_calib_cmd(sensor, sensor->cal_cmd, sensor->cal_id);
 	if (err < 0)
 		pr_err("light sensor cali Fail!\n");
+
+#if 0
+	err = set_als_para(sensor, ALS_WORK_MODE);
+	if (err < 0)
+		pr_err("set als to work mode Fail!\n");
 #endif
-	if(!sensor->caliRunning) {
-		thread_cali = NULL;
-	} else {
-		pr_err("Als cali thread is running!!!!\n");
-		return -EBUSY;
-	}
-
-	len = sscanf(buf, "%d %d\n", &sensor->als_cali_cmd, &sensor->cal_id);
-	if (len < 2)
-		return -EINVAL;
-	pr_debug("id:%d,type:%d\n", sensor->als_cali_cmd, sensor->cal_id);
-
-	if (sensor->cal_id == SENSOR_TYPE_LIGHT) {
-		if((sensor->als_cali_cmd < CALIB_ALS_DARK) || (sensor->als_cali_cmd > CALIB_ALS_STD)) {
-			pr_err("light sensor cali cmd error\n");
-			return -EINVAL;
-		}
-	} else if (sensor->cal_id == SENSOR_TYPE_PROX) {
-		if((sensor->als_cali_cmd < CALIB_PS_NOCOVER) ||
-			(sensor->als_cali_cmd > CALIB_PS_FAR)) {
-			pr_err("Proximity sensor cali cmd error\n");
-			return -EINVAL;
-		}				
-	} else if(sensor->cal_id == SENSOR_TYPE_ACC) {
-		if(sensor->als_cali_cmd != CALIB_ACC_HORIZONTAL) {
-			pr_err("Acceleration sensor cali cmd error\n");
-			return -EINVAL;
-		}		
-	} else {
-		pr_err("The type of sensor cali wrong, cali thread doesn't support!\n");
-		return -EINVAL;
-	}
-
-	if(sensor->cal_id == SENSOR_TYPE_LIGHT) {
-		thread_cali = kthread_run(shub_als_cali_thread, sensor, "als_cali_thread");
-	} else {
-		thread_cali = kthread_run(shub_other_cali_thread, sensor, "other_cali_thread");
-	}
-	if (IS_ERR(thread_cali)) {
-		err = PTR_ERR(thread_cali);
-		pr_err("failed to create kernel cali_thread: %d\n", err);
-	}
 
 	return err < 0 ? err : count;
 }
@@ -2144,7 +1784,6 @@ static ssize_t light_sensor_calibrator_store(struct device *dev,
 static ssize_t light_sensor_calibrator_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
-#if 0
 	int err, cali_data_coef;
 	int status = CALIB_STATUS_NON;
 	struct file *pfile;
@@ -2193,67 +1832,6 @@ static ssize_t light_sensor_calibrator_show(struct device *dev,
 	filp_close(pfile, NULL);
 
 	return sprintf(buf, "%d\n", status);
-#endif
-	int len = 0;
-	struct shub_data *sensor = dev_get_drvdata(dev);
-	int *cData = (int *)sensor->calibrated_data;
-
-	if (sensor->caliRunning) {
-		len += sprintf((buf + len), "Starus: Cali Running!\n");
-	} else {
-		len += sprintf((buf + len), "Cali Command: ");
-		switch(sensor->als_cali_cmd) {
-			case CALIB_ALS_DARK:
-				len += sprintf((buf + len), "CALIB_ALS_DARK [%d]\n",  sensor->als_cali_cmd);
-				break;
-			case CALIB_ALS_LEAK:
-				len += sprintf((buf + len), "CALIB_ALS_LEAK [%d]\n",  sensor->als_cali_cmd);
-				break;
-			case CALIB_ALS_STD:
-				len += sprintf((buf + len), "CALIB_ALS_STD [%d]\n",  sensor->als_cali_cmd);
-				break;
-			case CALIB_PS_NOCOVER:
-				len += sprintf((buf + len), "CALIB_PS_NOCOVER [%d]\n",  sensor->als_cali_cmd);
-				break;
-			case CALIB_PS_NEAR:
-				len += sprintf((buf + len), "CALIB_PS_NEAR [%d]\n",  sensor->als_cali_cmd);
-				break;
-			case CALIB_PS_FAR:
-				len += sprintf((buf + len), "CALIB_PS_FAR [%d]\n",  sensor->als_cali_cmd);
-				break;
-			case CALIB_ACC_HORIZONTAL:
-				len += sprintf((buf + len), "CALIB_ACC_HORIZONTAL [%d]\n",  sensor->als_cali_cmd);
-				break;
-			default :
-				break;
-		}
-
-		if ((sensor->als_cali_cmd == CALIB_NONE) && (sensor->als_cali_result == CALI_ERR_NONE)) {
-			len += sprintf((buf + len), "Starus: Never run any cali!\n");
-			return len;
-		} else {
-			len += sprintf((buf + len), "Starus: Cali Done!\n");
-			if(sensor->als_cali_result == CALI_ERR_NONE) {
-				len += sprintf((buf + len), "Result: Success!\n");
-			} else {
-				len += sprintf((buf + len), "Result: Failed! [err = %d]\n", sensor->als_cali_result);
-			}
-		}
-
-		thread_cali = NULL;
-	}
-
-	if(sensor->cal_id == SENSOR_TYPE_LIGHT) {
-		len += sprintf((buf + len), "Cali Data: Lux coeff[%d], ch0-ch5 coeff[%d %d %d %d %d]\n",
-			sensor->alsCoeff.lux_coeff, sensor->alsCoeff.ch0_coeff, sensor->alsCoeff.ch1_coeff,
-			sensor->alsCoeff.ch2_coeff, sensor->alsCoeff.ch3_coeff, sensor->alsCoeff.ch4_coeff);
-	} else if(sensor->cal_id == SENSOR_TYPE_PROX) {
-		len += sprintf((buf + len), "Prox Cali Data:[CT:%d 2CM:%d 6CM:%d]\n", *cData, *(cData + 1), *(cData + 2));		
-	} else if(sensor->cal_id == SENSOR_TYPE_ACC) {
-		len += sprintf((buf + len), "Acc Cali Data:[X:%d Y:%d Z:%d]\n", *cData, *(cData + 1), *(cData + 2));	
-	}
-	
-	return len;
 }
 static DEVICE_ATTR_RW(light_sensor_calibrator);
 
@@ -2393,7 +1971,6 @@ static ssize_t version_show(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_RO(version);
 
-#if 0
 static ssize_t als_mode_store(struct device *dev,
 				 struct device_attribute *attr,
 				 const char *buf, size_t count)
@@ -2415,56 +1992,75 @@ static ssize_t als_mode_store(struct device *dev,
 	return count;
 }
 static DEVICE_ATTR_WO(als_mode);
-#endif
 
 void get_dynamic_data(struct shub_data *sensor)
 {
 	int i;
 	u8 data[30], type, len;
 
-    //dev_err(&sensor->sensor_pdev->dev, "get_dynamic_data enter\n");
-
 	type = sensor->dynamic_data_get.type;
 	len = sensor->dynamic_data_get.length;
 	memcpy(data, sensor->dynamic_data_get.customer_data, len);
 	for (i = 0; i < len; i++)
-		dev_err(&sensor->sensor_pdev->dev,
-			"handle %d get dynamic data  data[%d] = %d\n", type,  i, data[i]);
-
-    if(type == ORDER_PROX)//data from proximity dynamic code
-    {
-        //dev_err(&sensor->sensor_pdev->dev, "get_dynamic_data type is proximity\n");
-        memcpy(data_from_dynamic, data, sizeof(data_from_dynamic));
-        dev_err(&sensor->sensor_pdev->dev, "get_dynamic_data cali_ct = %d, cali_2cm = %d, psensor_high = %d, psensor_low = %d\n",
-                                                            data_from_dynamic[0], data_from_dynamic[1], data_from_dynamic[2], data_from_dynamic[3]);
-    }
+		dev_dbg(&sensor->sensor_pdev->dev,
+			"handle %d get dynamic data is %d\n", type, data[i]);
 }
 
 static ssize_t data_to_dynamic_store(struct device *dev,
 				     struct device_attribute *attr,
 				     const char *buf, size_t count)
 {
-	int err = 0;
-	uint8_t data_to_dynamic = 0;
+	int err, len;
+	ssize_t num;
+	uint8_t data[CALIBRATION_DATA_LENGTH];
 	struct shub_data *sensor = dev_get_drvdata(dev);
-    dev_err(&sensor->sensor_pdev->dev, "data_to_dynamic_stores enter\n");
 
-	if (sscanf(buf, "%d\n", &data_to_dynamic) != 1)
-		return -EINVAL;
-
-	err = shub_send_command(sensor, ORDER_LIGHT, AP_SEND_DATA_TO_DYNAMIC_SUBTYPE, &data_to_dynamic, sizeof(data_to_dynamic));
+	num = count;
+	if (count <= CALIBRATION_DATA_LENGTH) {
+		len = count;
+	} else {
+		len = CALIBRATION_DATA_LENGTH;
+		dev_err(&sensor->sensor_pdev->dev, "buf length is beyond 30 bytes\n");
+	}
+	memcpy(data, buf, len);
+	err = shub_send_command(sensor, HANDLE_MAX,
+				AP_SEND_DATA_TO_DYNAMIC_SUBTYPE,
+				(char *)data, len);
 	if (err < 0) {
 		dev_err(&sensor->sensor_pdev->dev, "Send dynamic para_data fail\n");
 	}
-	dev_err(&sensor->sensor_pdev->dev, "data_to_dynamic Send dynamic para_data:%d\n", data_to_dynamic);
-    //0:close ps dynamic thread;1:open ps dynamic thread.
-    if((data_to_dynamic == 1) || (data_to_dynamic == 0)){
-        proximity_dynamic_thread_flag = data_to_dynamic;
-    }
 
-	return count;
+	return num;
 }
 static DEVICE_ATTR_WO(data_to_dynamic);
+
+static ssize_t custom_para_store(struct device *dev,
+        struct device_attribute *attr,
+        const char *buf, size_t count)
+{
+    u32 sensor_type, sensor_para[3];
+    struct shub_data *sensor = dev_get_drvdata(dev);
+
+    if (sensor->mcu_mode <= SHUB_OPDOWNLOAD) {
+        dev_info(&sensor->sensor_pdev->dev, "custom_para_store: mcu_mode == %d!\n",  sensor->mcu_mode);
+        return -EAGAIN;
+    }
+
+    if (sscanf(buf, "%u %u %u %u\n",
+                &sensor_type, &sensor_para[0],
+                &sensor_para[1],
+                &sensor_para[2]) != 4)
+        return -EINVAL;
+
+    dev_info(&sensor->sensor_pdev->dev,
+            "custom_para_store: sensor_type=%u, sensor_para[0]=%u, sensor_para[1]=%u, sensor_para[2]=%u!\n",
+            sensor_type, sensor_para[0], sensor_para[1], sensor_para[2]);
+
+    shub_send_command(sensor, sensor_type, SHUB_SET_CUSTOM_PARA, (char *)sensor_para, sizeof(sensor_para));
+
+    return count;
+}
+static DEVICE_ATTR_WO(custom_para);
 
 static ssize_t raw_data_acc_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -2489,8 +2085,6 @@ static ssize_t raw_data_acc_show(struct device *dev,
 	return sprintf(buf, "%d %u %u %u\n", err, ptr[0], ptr[1], ptr[2]);
 }
 static DEVICE_ATTR_RO(raw_data_acc);
-
-#if 0
 
 static ssize_t raw_data_mag_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -2537,72 +2131,6 @@ static ssize_t raw_data_gyro_show(struct device *dev,
 	return sprintf(buf, "%d %u %u %u\n", err, ptr[0], ptr[1], ptr[2]);
 }
 static DEVICE_ATTR_RO(raw_data_gyro);
-#endif
-
-static ssize_t raw_data_acc1_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	float ptr[6] = {0};
-	int data_out[3]={0};
-	int err=0;
-	memcpy(ptr,sensor_event_acc_data.fdata,6*sizeof(float));
-
-	ptr[0]*=1000;
-	ptr[1]*=1000;
-	ptr[2]*=1000;
-	data_out[0]=(int)ptr[0];
-	data_out[1]=(int)ptr[1];
-	data_out[2]=(int)ptr[2];
-    pr_err("raw_data_acc1_show x=%d, y=%d, z=%d\n", data_out[0], data_out[1], data_out[2]);
-
-	return sprintf(buf, "%d %d %d %d\n", err, data_out[0], data_out[1], data_out[2]);
-}
-static DEVICE_ATTR_RO(raw_data_acc1);
-
-static ssize_t raw_data_als1_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-    float ptr[6];
-    int data_out[3]={0};
-    int len = 0;
-    memcpy(ptr,sensor_event_als_data.fdata,6*sizeof(float));
-
-    data_out[0]=(int)ptr[0];
-    data_out[1]=(int)ptr[1];
-    data_out[2]=(int)ptr[2];
-
-    len += sprintf(buf, ": als : %d\n",data_out[0]);
-    len += sprintf((buf + len), ": alsval : %d\n",data_out[1]);
-    len += sprintf((buf + len), ": irval  : %d\n",data_out[2]);
-    len += sprintf((buf + len), ": 1th psensor ratio: %d\n", (data_out[2] * 100 / (data_out[1] + 1)));
-    len += sprintf((buf + len), ": 2th psensor ratio: %d\n", (data_out[2] * 100 / (data_out[1] + 1)));
-    pr_err("raw_data_als1_show als=%d, alsval=%d, irval=%d\n", data_out[0], data_out[1], data_out[2]);
-
-    return len;
-}
-static DEVICE_ATTR_RO(raw_data_als1);
-
-static ssize_t raw_data_ps1_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-    float ptr[4];
-    int data_out[3]={0};
-    int len = 0;
-    memcpy(ptr,sensor_event_ps_data.fdata,4*sizeof(float));
-
-    data_out[0]=(int)ptr[0];
-    data_out[1]=(int)ptr[1];
-
-    len += sprintf(buf, ": state : %d\n",data_out[0]);
-    //len += sprintf((buf + len), ": ps_current_thd_h : %d\n",data_out[1] >> 16);
-    //len += sprintf((buf + len), ": ps_current_thd_l  : %d\n",data_out[1] & 0xFFFF);
-    len += sprintf((buf + len), ": ps_current_thd_h : %d\n", data_from_dynamic[2]);
-    len += sprintf((buf + len), ": ps_current_thd_l  : %d\n",data_from_dynamic[3]);
-    len += sprintf((buf + len), ": ps_dynamic_flag  : %d\n",proximity_dynamic_thread_flag);
-
-    return len;
-}
-static DEVICE_ATTR_RO(raw_data_ps1);
 
 static ssize_t raw_data_als_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -2636,7 +2164,6 @@ static ssize_t raw_data_ps_show(struct device *dev,
 	u16 *ptr = (u16 *)data;
 	int err;
 
-    //dev_err(&sensor->sensor_pdev->dev, "raw_data_ps_show : ls98xx_enable = %d\n", ls98xx_enable);
 	if (sensor->mcu_mode <= SHUB_OPDOWNLOAD) {
 		dev_err(&sensor->sensor_pdev->dev, "mcu_mode == SHUB_BOOT!\n");
 		return -EINVAL;
@@ -2647,7 +2174,6 @@ static ssize_t raw_data_ps_show(struct device *dev,
 		dev_err(&sensor->sensor_pdev->dev, "read RegMapR_GetProximityRawData failed!\n");
 		return err;
 	}
-
 	return sprintf(buf, "%d\n", ptr[0]);
 }
 static DEVICE_ATTR_RO(raw_data_ps);
@@ -2732,7 +2258,6 @@ static ssize_t sensor_info_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(sensor_info);
 
-#if 0
 static ssize_t mag_cali_flag_store(struct device *dev,
 				   struct device_attribute *attr,
 				   const char *buf, size_t count)
@@ -2766,7 +2291,6 @@ static ssize_t mag_cali_flag_store(struct device *dev,
 	return 0;
 }
 static DEVICE_ATTR_WO(mag_cali_flag);
-#endif
 
 static ssize_t shub_debug_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
@@ -2873,6 +2397,88 @@ static ssize_t cm4_operate_store(struct device *dev,
 
 static DEVICE_ATTR_RW(cm4_operate);
 
+static ssize_t acc_info_show(struct device *dev,
+                        struct device_attribute *attr, char *buf)
+{
+        if (hw_sensor_id[0].id_status != _IDSTA_OK)
+                    return -EINVAL;
+
+        return sprintf(buf, "%s", hw_sensor_id[0].pname);
+}
+static DEVICE_ATTR_RO(acc_info);
+
+static ssize_t gyr_info_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	if (hw_sensor_id[2].id_status != _IDSTA_OK)
+		return -EINVAL;
+
+	return sprintf(buf, "%s", hw_sensor_id[2].pname);
+}
+static DEVICE_ATTR_RO(gyr_info);
+
+static ssize_t mag_info_show(struct device *dev,
+                        struct device_attribute *attr, char *buf)
+{
+        if (hw_sensor_id[1].id_status != _IDSTA_OK)
+                    return -EINVAL;
+
+        return sprintf(buf, "%s", hw_sensor_id[1].pname);
+}
+static DEVICE_ATTR_RO(mag_info);
+
+static ssize_t prox_info_show(struct device *dev,
+                        struct device_attribute *attr, char *buf)
+{
+        if (hw_sensor_id[3].id_status != _IDSTA_OK)
+                    return -EINVAL;
+
+        return sprintf(buf, "%s", hw_sensor_id[3].pname);
+}
+static DEVICE_ATTR_RO(prox_info);
+
+static ssize_t light_info_show(struct device *dev,
+                        struct device_attribute *attr, char *buf)
+{
+        if (hw_sensor_id[4].id_status != _IDSTA_OK)
+                    return -EINVAL;
+
+        return sprintf(buf, "%s", hw_sensor_id[4].pname);
+}
+static DEVICE_ATTR_RO(light_info);
+
+static ssize_t als_target_lux_show(struct device *dev,
+                struct device_attribute *attr, char *buf)
+{
+    return snprintf(buf, PAGE_SIZE, "%d\n", als_cali_target_lux);
+}
+
+static ssize_t als_target_lux_store(struct device *dev,
+                 struct device_attribute *attr,
+                 const char *buf, size_t count)
+{
+    int ret = 0;
+    unsigned int lux = 0;
+
+    ret = sscanf(buf, "%d", &lux);
+    if (ret != 1) {
+        pr_err("invalid content: '%s', length = %zu\n", buf, count);
+        return count;
+    }
+
+    als_cali_target_lux = lux;
+
+    return count;
+}
+static DEVICE_ATTR_RW(als_target_lux);
+
+static ssize_t als_cali_para_show(struct device *dev,
+                struct device_attribute *attr, char *buf)
+{
+    return snprintf(buf, PAGE_SIZE, "%d\n", als_cali_data);
+}
+static DEVICE_ATTR_RO(als_cali_para);
+
 static ssize_t cm4_spi_set_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
@@ -2891,8 +2497,8 @@ static ssize_t cm4_spi_set_show(struct device *dev,
 		 "\tset_op: 3\n"
 		 "\tfreq: spi frequency, for example 9: 9MHz, a: 10MHz, b: 11MHz\n"
 		 "\tcs: spi chip_select num, default 0\n"
-		 "\tmode: configure spi CPOL, CPHA, valid value: 0, 1, 2, or 3\n"
-		 "\tbit_per_word: valid value: 8, 16 or 32\n\n"
+		 "\tmode: configure spi CPOL, CPHA, invalid value: 0, 1, 2, or 3\n"
+		 "\tbit_per_word: invalid value: 8, 16 or 32\n\n"
 		 "\tstatus: show execution result. 1:success 0:fail\n\n"
 		 "%s\n", m);
 }
@@ -2925,172 +2531,11 @@ static ssize_t cm4_spi_sync_show(struct device *dev,
 		 "\tvalue1: the first value to be written\n"
 		 "\tvalue2: the second value to be written\n"
 		 "\tlen: num of regs to be read or written\n\n"
-		 "execution result:\n"
+		 "\execution result:\n"
 		 "%s%s\n", l, m);
 }
 static DEVICE_ATTR_RO(cm4_spi_sync);
 
-static ssize_t als_cali_data_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	int err;
-	int cali_lux_coef = 0, cali_A_coef = 0, cali_R_coef = 0;
-	int cali_G_coef = 0, cali_B_coef = 0, cali_C_coef = 0;
-	int len = 0;
-	struct file *pfile;
-	char raw_cali_data[CALIBRATION_DATA_LENGTH] = {0};
-	struct shub_data *sensor = dev_get_drvdata(dev);
-
-	pfile = filp_open(SHUB_LIGHT_CALI_DATA_FILE, O_RDONLY, 0);
-	if (IS_ERR(pfile)) {
-		err = PTR_ERR(pfile);
-		pr_err("open file light cali fail ret=%d,Use default calibration data!\n", err);
-	} else {
-		err = kernel_read(pfile, raw_cali_data,
-			          CALIBRATION_DATA_LENGTH,
-			          &pfile->f_pos);
-		if (err < 0) {
-			 pr_err("Error: file read failed, Use default calibration data!\n");
-		} else {
-			memcpy(&cali_lux_coef, (raw_cali_data), sizeof(int));
-			memcpy(&cali_A_coef, (raw_cali_data + 4), sizeof(int));
-			memcpy(&cali_R_coef, (raw_cali_data + 8), sizeof(int));
-			memcpy(&cali_G_coef, (raw_cali_data + 12), sizeof(int));
-			memcpy(&cali_B_coef, (raw_cali_data + 16), sizeof(int));
-			memcpy(&cali_C_coef, (raw_cali_data + 20), sizeof(int));
-		}
-
-		filp_close(pfile, NULL);
-	}
-
-    len += sprintf(buf, "Coeff Data[DRV]:[%d,%d,%d,%d,%d,%d]\n", sensor->alsCoeff.lux_coeff,
-                        sensor->alsCoeff.ch0_coeff, sensor->alsCoeff.ch1_coeff,
-                        sensor->alsCoeff.ch2_coeff, sensor->alsCoeff.ch3_coeff,
-                        sensor->alsCoeff.ch4_coeff);
-    len += sprintf((buf + len), "Coeff Data[file]:[%d,%d,%d,%d,%d,%d]\n", cali_lux_coef,
-                        cali_A_coef, cali_R_coef, cali_G_coef, cali_B_coef, cali_C_coef);
-
-	return len;
-}
-
-static ssize_t als_cali_data_store(struct device *dev,
-				 struct device_attribute *attr,
-				 const char *buf, size_t count)
-{
-	int err, len;
-	int cali_data[6] = {0, 0, 0, 0, 0, 0};
-	struct file *pfile;
-	char als_data[CALIBRATION_DATA_LENGTH] = {0};
-	struct shub_data *sensor = dev_get_drvdata(dev);
-
-	if (sensor->mcu_mode <= SHUB_OPDOWNLOAD) {
-		pr_err("mcu_mode == SHUB_BOOT!\n");
-		return -EINVAL;
-	}
-
-	len = sscanf(buf, "%d %d %d %d %d %d\n", &cali_data[0], &cali_data[1],
-	                      &cali_data[2], &cali_data[3], &cali_data[4], &cali_data[5]);
-
-    pfile = filp_open(SHUB_LIGHT_CALI_DATA_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-	if (IS_ERR(pfile)) {
-		err = PTR_ERR(pfile);
-		pr_err("open file light cali fail error=%d\n", err);
-	} else {
-		memcpy(als_data, (char *)cali_data, sizeof(cali_data));
-
-		err = kernel_write(pfile, als_data,
-			      CALIBRATION_DATA_LENGTH,
-			      &pfile->f_pos);
-		if (err < 0)
-			pr_err("err=%d\n", err);
-
-		filp_close(pfile, NULL);
-	}
-
-	if(!(err < 0)) {
-		//sensor->alsCoeff.lux_coeff = cali_data[0];
-		//sensor->alsCoeff.ch0_coeff = cali_data[1];
-		//sensor->alsCoeff.ch1_coeff = cali_data[2];
-		//sensor->alsCoeff.ch2_coeff = cali_data[3];
-		//sensor->alsCoeff.ch3_coeff = cali_data[4];
-		//sensor->alsCoeff.ch4_coeff = cali_data[5];
-		memcpy(&(sensor->alsCoeff), cali_data, sizeof(cali_data));
-		pr_err("Write light cali file success\n", err);
-	}
-
-	return (err < 0) ? err : count;
-}
-static DEVICE_ATTR_RW(als_cali_data);
-
-static ssize_t ps_cali_data_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	int err, len = 0;
-	int cali_ct = 0, cali_2cm = 0, cali_6cm = 0;
-	struct file *pfile;
-	char raw_cali_data[CALIBRATION_DATA_LENGTH] = {0};
-
-	pfile = filp_open(SHUB_PROX_CALI_DATA_FILE, O_RDONLY, 0);
-	if (IS_ERR(pfile)) {
-		err = PTR_ERR(pfile);
-		pr_err("open file Psensor cali fail ret=%d,Use default calibration data!\n", err);
-		pr_err("ps_cali_data_show 1 [ct:%d, 2cm:%d, 6cm:%d]\n", data_from_dynamic[0], data_from_dynamic[1], 0);
-		len = sprintf(buf, "Cali Data[ct:%d, 2cm:%d, 6cm:%d]\n", data_from_dynamic[0], data_from_dynamic[1], 0);
-		return len;
-	} else {
-		err = kernel_read(pfile, raw_cali_data,
-			          CALIBRATION_DATA_LENGTH,
-			          &pfile->f_pos);
-		if (err < 0) {
-			 pr_err("Error: file read failed, Use default calibration data!\n");
-		} else {
-			memcpy(&cali_ct, (raw_cali_data), sizeof(int));
-			memcpy(&cali_2cm, (raw_cali_data + 4), sizeof(int));
-			memcpy(&cali_6cm, (raw_cali_data + 8), sizeof(int));
-		}
-
-		filp_close(pfile, NULL);		
-	}
-    pr_err("ps_cali_data_show 2[ct:%d, 2cm:%d, 6cm:%d]\n", cali_ct, cali_2cm, cali_6cm);
-
-	len += sprintf(buf, "Cali Data[ct:%d, 2cm:%d, 6cm:%d]\n", cali_ct, cali_2cm, cali_6cm);
-
-	return len;
-}
-static DEVICE_ATTR_RO(ps_cali_data);
-
-static ssize_t acc_cali_data_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	int err, len = 0;
-	int x_axis = 0, y_axis = 0, z_axis = 0;
-	struct file *pfile;
-	char raw_cali_data[CALIBRATION_DATA_LENGTH] = {0};
-
-	pfile = filp_open(SHUB_ACC_CALI_DATA_FILE, O_RDONLY, 0);
-	if (IS_ERR(pfile)) {
-		err = PTR_ERR(pfile);
-		pr_err("open file acc cali fail ret=%d,Use default calibration data!\n", err);
-	} else {
-		err = kernel_read(pfile, raw_cali_data,
-			          CALIBRATION_DATA_LENGTH,
-			          &pfile->f_pos);
-		if (err < 0) {
-			 pr_err("Error: file read failed, Use default calibration data!\n");
-		} else {
-			memcpy(&x_axis, (raw_cali_data), sizeof(int));
-			memcpy(&y_axis, (raw_cali_data + 4), sizeof(int));
-			memcpy(&z_axis, (raw_cali_data + 8), sizeof(int));
-		}
-
-		filp_close(pfile, NULL);		
-	}
-	pr_err("acc_cali_data_show [X:%d, Y:%d, Z:%d]\n", x_axis, y_axis, z_axis);
-	len += sprintf(buf, "Cali Data[X:%d, Y:%d, Z:%d]\n", x_axis, y_axis, z_axis);
-
-	return len;
-}
-static DEVICE_ATTR_RO(acc_cali_data);
 
 static struct attribute *sensorhub_attrs[] = {
 	&dev_attr_debug_data.attr,
@@ -3105,32 +2550,27 @@ static struct attribute *sensorhub_attrs[] = {
 	&dev_attr_calibrator_data.attr,
 	&dev_attr_light_sensor_calibrator.attr,
 	&dev_attr_version.attr,
-	&dev_attr_data_to_dynamic.attr,
-	
-	&dev_attr_raw_data_acc.attr,
-	&dev_attr_raw_data_acc1.attr,
-
-#if 0
 	&dev_attr_als_mode.attr,
+	&dev_attr_data_to_dynamic.attr,
+        &dev_attr_custom_para.attr,
 	&dev_attr_raw_data_acc.attr,
 	&dev_attr_raw_data_mag.attr,
 	&dev_attr_raw_data_gyro.attr,
-#endif
-	&dev_attr_raw_data_als1.attr,
 	&dev_attr_raw_data_als.attr,
-	&dev_attr_raw_data_ps1.attr,
 	&dev_attr_raw_data_ps.attr,
 	&dev_attr_sensorhub.attr,
 	&dev_attr_hwsensor_id.attr,
 	&dev_attr_sensor_info.attr,
-#if 0
 	&dev_attr_mag_cali_flag.attr,
-#endif
 	&dev_attr_shub_debug.attr,
 	&dev_attr_cm4_operate.attr,
-	&dev_attr_als_cali_data.attr,
-	&dev_attr_ps_cali_data.attr,
-	&dev_attr_acc_cali_data.attr,
+	&dev_attr_acc_info.attr,
+	&dev_attr_mag_info.attr,
+	&dev_attr_prox_info.attr,
+	&dev_attr_light_info.attr,
+	&dev_attr_gyr_info.attr,
+	&dev_attr_als_target_lux.attr,
+	&dev_attr_als_cali_para.attr,
 	&dev_attr_cm4_spi_set.attr,
 	&dev_attr_cm4_spi_sync.attr,
 	NULL,
@@ -3159,7 +2599,7 @@ static int shub_notifier_fn(struct notifier_block *nb,
 	}
 	return 0;
 }
-#if 0
+
 static int shub_reboot_notifier_fn(struct notifier_block *nb, unsigned long action, void *data)
 {
 	struct shub_data *sensor = container_of(nb, struct shub_data,
@@ -3176,7 +2616,7 @@ static int shub_reboot_notifier_fn(struct notifier_block *nb, unsigned long acti
 	dev_info(&sensor->sensor_pdev->dev, "reboot action=%d\n", action);
 	return NOTIFY_OK;
 }
-#endif
+
 /* iio device reg */
 static void iio_trigger_work(struct irq_work *work)
 {
@@ -3285,11 +2725,9 @@ static int shub_read_raw(struct iio_dev *iio_dev,
 	int ret = -EINVAL;
 
 	if (chan->type == IIO_LIGHT) {
-#if 0
 		*val =  channel_data_light_x_int0;
 		dev_dbg(&iio_dev->dev, " val = %u, time = %lu, now = %lu\n",
 			*val, channel_data_light_time, jiffies);
-#endif
 		return IIO_VAL_INT;
 	}
 
@@ -3436,7 +2874,6 @@ static void shub_config_init(struct shub_data *sensor)
 static int shub_probe(struct platform_device *pdev)
 {
 	struct shub_data *mcu;
-	struct device_node *np = pdev->dev.of_node;
 	struct iio_dev *indio_dev;
 	int error;
 
@@ -3474,9 +2911,6 @@ static int shub_probe(struct platform_device *pdev)
 	mcu->dynamic_read = get_dynamic_data;
 	init_waitqueue_head(&mcu->rxwq);
 
-	mcu->als_cali_cmd = CALIB_NONE;
-	mcu->als_cali_result = CALI_ERR_NONE;
-	mcu->caliRunning = false;
 	mcu->resp_cmdstatus_callback = parse_cmd_response_callback;
 	init_waitqueue_head(&mcu->rw_wait_queue);
 
@@ -3484,7 +2918,6 @@ static int shub_probe(struct platform_device *pdev)
 	mutex_init(&mcu->mutex_read);
 	mutex_init(&mcu->mutex_send);
 	mutex_init(&mcu->send_command_mutex);
-	mutex_init(&mcu->mutex_alsraw_lock);
 
 	error = shub_config_kfifo(indio_dev);
 	if (error) {
@@ -3541,16 +2974,9 @@ static int shub_probe(struct platform_device *pdev)
 				   SMSG_CH_PIPE, SIPC_PM_BUFID1);
 	mcu->early_suspend.notifier_call = shub_notifier_fn;
 	register_pm_notifier(&mcu->early_suspend);
-	mcu->vled_pin = of_get_named_gpio(np, "sprd,prox-irvdd-gpio", 0);
-	if (!gpio_is_valid(mcu->vled_pin)) {
-		dev_err(&pdev->dev, "Can not get Proximity ir led vdd gpio!!\n");
-	} else {
-		error = gpio_request(mcu->vled_pin, "vled");
-		if (error)
-			dev_err(&pdev->dev, "gpio vled err: %d\n", mcu->vled_pin);		
-	}
-	
-	gpio_direction_output(mcu->vled_pin, 1);
+	mcu->shub_reboot_notifier.notifier_call = shub_reboot_notifier_fn;
+	register_reboot_notifier(&mcu->shub_reboot_notifier);
+
 	return 0;
 
 err_free_mem:
@@ -3575,19 +3001,6 @@ static int shub_remove(struct platform_device *pdev)
 		kthread_stop(thread);
 	if (!IS_ERR_OR_NULL(thread_nwu))
 		kthread_stop(thread_nwu);
-	if (!IS_ERR_OR_NULL(thread_cali)) {
-		if(mcu->caliRunning) {
-			kthread_stop(thread_cali);
-		}
-	}
-	
-	if(backlight_notifier_registered){
-		backlight_level_notifier_unregister(&backlight_nb);
-	}
-	
-	if (gpio_is_valid(mcu->vled_pin)) {
-		gpio_free(mcu->vled_pin);
-	}
 	iio_device_unregister(indio_dev);
 	shub_remove_trigger(indio_dev);
 	shub_remove_buffer(indio_dev);
@@ -3598,10 +3011,6 @@ static int shub_remove(struct platform_device *pdev)
 
 static const struct of_device_id shub_match_table[] = {
 	{.compatible = "sprd,sensor-hub",},
-	{.compatible = "sprd,sharkl3-sensorhub",},
-	{.compatible = "sprd,sharkl5-sensorhub",},
-	{.compatible = "sprd,roc1-sensorhub",},
-	{.compatible = "sprd,sharkl5Pro-sensorhub",},
 	{},
 };
 
