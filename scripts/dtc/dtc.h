@@ -65,6 +65,10 @@ extern int auto_label_aliases;	/* auto generate labels -> aliases */
 
 typedef uint32_t cell_t;
 
+static inline bool phandle_is_valid(cell_t phandle)
+{
+	return phandle != 0 && phandle != ~0U;
+}
 
 #define streq(a, b)	(strcmp((a), (b)) == 0)
 #define strstarts(s, prefix)	(strncmp((s), (prefix), strlen(prefix)) == 0)
