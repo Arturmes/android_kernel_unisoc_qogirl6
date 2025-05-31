@@ -1,2 +1,0 @@
-obj-$(CONFIG_LEDS_SC27XX_VIBRA)	+= vibrator_drv.o
-
