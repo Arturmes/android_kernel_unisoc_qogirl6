@@ -18,8 +18,6 @@ obj-y += dummy/dummy_connector.o
 
 obj-y += disp_lib.o sprd_corner.o disp_trusty.o
 
-#obj-y += sprd_hdcp.o
-
 obj-y += sprd_bl.o
 
 obj-y += dpu/
@@ -32,7 +30,7 @@ obj-y += sysfs/
 # obj-y += pike2/
 # obj-y += sharkl3/
 # obj-y += sharkl5/
-# obj-y += sharkl5Pro/
+obj-y += sharkl5Pro/
 # obj-y += roc1/
 obj-y += qogirl6/
 # obj-y += qogirn6pro/
