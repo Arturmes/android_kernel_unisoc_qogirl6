@@ -1615,8 +1615,9 @@ static int mmc_hs200_tuning(struct mmc_card *card)
 }
 
 /************Added for sdcard status node.*************/
-static struct kobject *sdcard_device = NULL;
 int sdcard_insert_or_not = 0;//plug in:1     plug out:0
+#if defined(CONFIG_MMC_SDHCI)
+static struct kobject *sdcard_device = NULL;
 static ssize_t sdcard_status_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
         return snprintf(buf, PAGE_SIZE, "%d\n", sdcard_insert_or_not);
@@ -1645,6 +1646,7 @@ static int create_sdcard_status_node(void)
         }
         return 0 ;
 }
+#endif
 /************Added for sdcard status node.*************/
 
 /*
@@ -1974,7 +1976,9 @@ int mmc_init_card(struct mmc_host *host, u32 ocr,
 		}
 	}
 #endif
+#if defined(CONFIG_MMC_SDHCI)
 	create_sdcard_status_node();//Add for sdcard status node.
+#endif
 
 	return 0;
 
