@@ -168,7 +168,7 @@ else
 KBUILD_IMAGE	:= $(boot)/Image.gz
 endif
 
-KBUILD_DTBS	:= dtbs
+KBUILD_DTBS	:= dtbs dtb.img
 
 BUILD_DTC_PATH = $(subst $\",,$(CONFIG_BUILD_ARM64_DTC))
 ifneq ($(BUILD_DTC_PATH),)
@@ -191,6 +191,9 @@ Image.%: Image
 
 zinstall install:
 	$(Q)$(MAKE) $(build)=$(boot) $@
+
+dtb.img: dtbs
+	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
 %.dtb: scripts
 	$(Q)$(MAKE) $(build)=$(boot)/dts $(boot)/dts/$@

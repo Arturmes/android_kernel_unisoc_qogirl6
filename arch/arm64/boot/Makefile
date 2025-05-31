@@ -28,6 +28,8 @@ DTB_LIST := $(dtb-y)
 endif
 DTB_OBJS := $(addprefix $(obj)/dts/,$(DTB_LIST))
 
+DT_OBJS := $(shell find -L $(obj)/dts/ -name \*.dtb)
+
 $(obj)/Image: vmlinux FORCE
 	$(call if_changed,objcopy)
 	@/usr/bin/size vmlinux
@@ -53,6 +55,9 @@ $(obj)/Image.lzo: $(obj)/Image FORCE
 
 $(obj)/Image.gz-dtb: $(obj)/Image.gz $(DTB_OBJS) FORCE
 	$(call if_changed,cat)
+
+$(obj)/dtb.img: $(DT_OBJS) FORCE
+	$(call if_changed,mkdtimg)
 
 install:
 	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
