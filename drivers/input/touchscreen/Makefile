@@ -104,6 +104,7 @@ obj-$(CONFIG_TOUCHSCREEN_ZET6223)	+= zet6223.o
 obj-$(CONFIG_TOUCHSCREEN_ZFORCE)	+= zforce_ts.o
 obj-$(CONFIG_TOUCHSCREEN_COLIBRI_VF50)	+= colibri-vf50-ts.o
 obj-$(CONFIG_TOUCHSCREEN_ROHM_BU21023)	+= rohm_bu21023.o
+obj-$(CONFIG_TOUCHSCREEN_ADAPTIVE)      += adaptive-ts/
 obj-$(CONFIG_TOUCHSCREEN_LOCKDOWN_INFO)	    +=  lct_tp_info.o
 obj-$(CONFIG_TOUCHSCREEN_GESTURE_WAKEUP)	    +=  lct_tp_gesture.o
 obj-$(CONFIG_TOUCHSCREEN_CHIPONE) 	+= chipone/
