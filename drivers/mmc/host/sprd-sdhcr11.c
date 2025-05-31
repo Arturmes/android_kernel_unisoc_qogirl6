@@ -1650,8 +1650,9 @@ static void sprd_sdhc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 }
 
 /************Add card slot detect node*************/
-static struct kobject *card_slot_device = NULL;
 static int card_insert_or_not = 0;//plug in:1     plug out:0
+#if defined(CONFIG_MMC_SDHCI)
+static struct kobject *card_slot_device = NULL;
 static ssize_t card_slot_status_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%d\n", card_insert_or_not);
@@ -1680,6 +1681,7 @@ static int create_card_slot_node(void)
 	}
 	return 0 ;
 }
+#endif
 /************Add card slot detect node*************/
 
 static int sprd_sdhc_get_cd(struct mmc_host *mmc)
@@ -2539,8 +2541,9 @@ static int sprd_sdhc_probe(struct platform_device *pdev)
 	}
 	dev_info(dev, "%s[%s] host controller, irq %d\n",
 		 host->device_name, mmc_hostname(mmc), host->irq);
-
+#if defined(CONFIG_MMC_SDHCI)
 	create_card_slot_node();//Add for card slot detect.
+#endif
 	return 0;
 
 err_free_host:
