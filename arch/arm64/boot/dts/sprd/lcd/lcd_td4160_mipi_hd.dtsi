@@ -3,8 +3,8 @@
 		target-path = "/";
 		__overlay__ {
 			lcds {
-				td4160_cw_hd: td4160_cw_hd {
-
+				td4160_mipi_hd: td4160_mipi_hd {
+					compatible = "td4160,mipi_hd";
 					sprd,dsi-work-mode = <1>; /* video burst mode*/
 					bpp = <24>;
 					sprd,dsi-lane-number = <4>;
@@ -17,7 +17,7 @@
 					vactive = <1612>;
 					lcm_ic_inch = "6.56";
 					lcm_adb_fix_param = <1>;
-					bias_pwrup_reset = <01>;
+					bias_pwrup_reset = <1>;
 					lcm_ic_num = <2>;
 					lcm_compatible_mode = <1>;
 					lcm_adc_channel = <2>;
@@ -44,7 +44,6 @@
 					sprd,cabc-close = [23 00 00 02 55 00];
 					sleep-in = [13 14 00 01 28 13 78 00 01 10];
 					sleep-out = [13 78 00 01 11 13 14 00 01 29];
-					phandle = <433>;
 
 					lcm@0 {
 						lcm_chip_id = <43>;
@@ -56,9 +55,9 @@
 					};
 
 					display-timings {
-						native-mode = <&td4160_cw_hd_timing1>;
+						native-mode = <&td4160_mipi_hd_timing1>;
 
-						td4160_cw_hd_timing0: timing0 {
+						td4160_mipi_hd_timing0: timing0 {
 							fps = <60>;
 							clock-frequency = <932000>;
 							pixel-clk = <128000000>;
@@ -70,7 +69,7 @@
 							vsync-len = <4>;
 						};
 
-						td4160_cw_hd_timing1: timing1 {
+						td4160_mipi_hd_timing1: timing1 {
 							fps = <90>;
 							clock-frequency = <932000>;
 							pixel-clk = <128000000>;

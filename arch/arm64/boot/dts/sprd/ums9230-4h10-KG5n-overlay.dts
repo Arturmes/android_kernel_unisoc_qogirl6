@@ -7,7 +7,7 @@
 #include <dt-bindings/mfd/sprd,sc2730-mask.h>
 #include <dt-bindings/usb/pd.h>
 #include "lcd/lcd_dummy_mipi.dtsi"
-#include "lcd/lcd_td4160_cw_hd.dtsi"
+#include "lcd/lcd_td4160_mipi_hd.dtsi"
 
 / {
 
@@ -540,7 +540,7 @@
 		reg = <0>;
 		spi-max-frequency = <9600000>;
 		/* TD4160 */
-		panel = <&td4160_cw_hd>;
+		panel = <&td4160_mipi_hd>;
 
 		omnivision,irq-gpio = <&ap_gpio 144 0x2008>; /* IRQF_ONESHOT | IRQF_TRIGGER_LOW */
 		omnivision,irq-on-state = <0>;
